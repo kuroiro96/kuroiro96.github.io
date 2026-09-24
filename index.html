@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="ja" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClipGallery - タブ・コピー切り替え・ダークモード・クラウド同期対応</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Firebase SDK (Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen pb-12 transition-colors duration-200">
+
+  <!-- ヘッダー -->
+  <header class="bg-white dark:bg-slate-800 shadow-sm sticky top-0 z-20 border-b border-slate-200 dark:border-slate-700">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+      <div class="flex items-center gap-3">
+        <h1 class="text-xl font-bold flex items-center gap-2">
+          <i class="fa-regular fa-copy text-indigo-600 dark:text-indigo-400"></i> ClipGallery
+        </h1>
+        <!-- クラウド同期ステータス表示 -->
+        <span id="syncStatus" class="text-xs px-2.5 py-1 rounded-full font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+          <i class="fa-solid fa-hard-drive"></i> ローカルモード
+        </span>
+      </div>
+
+      <!-- コピーモード切替 ＆ 表示モード切替 ＆ ダークモード ＆ 追加 -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- コピーモード設定 -->
+        <div class="bg-slate-200/80 dark:bg-slate-700 p-1 rounded-lg flex items-center gap-1">
+          <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 pl-2 pr-1">コピー:</span>
+          <button id="btnModeA" onclick="setCopyMode('A')" class="px-2.5 py-1 rounded-md text-xs font-bold transition">Aのみ</button>
+          <button id="btnModeAB" onclick="setCopyMode('AB')" class="px-2.5 py-1 rounded-md text-xs font-bold transition">A + B</button>
+        </div>
+
+        <!-- 表示切替ボタン -->
+        <div class="bg-slate-200/80 dark:bg-slate-700 p-1 rounded-lg flex gap-1">
+          <button id="btnViewList" onclick="switchView('list')" class="px-3 py-1 rounded-md text-xs font-medium transition">
+            <i class="fa-solid fa-pen-to-square mr-1"></i> 一覧
+          </button>
+          <button id="btnViewGallery" onclick="switchView('gallery')" class="px-3 py-1 rounded-md text-xs font-medium transition">
+            <i class="fa-solid fa-border-all mr-1"></i> ギャラリー
+          </button>
+        </div>
+
+        <!-- ダークモード切り替え -->
+        <button onclick="toggleDarkMode()" class="p-2 rounded-lg bg-slate-200/80 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 transition text-slate-700 dark:text-amber-300" title="ダークモード切替">
+          <i id="darkModeIcon" class="fa-solid fa-moon"></i>
+        </button>
+
+        <!-- 新規追加ボタン -->
+        <button onclick="openModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1 shadow-sm">
+          <i class="fa-solid fa-plus"></i> 追加
+        </button>
+      </div>
+    </div>
+
+    <!-- カテゴリ（タブ）バー -->
+    <div class="max-w-6xl mx-auto px-4 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between overflow-x-auto no-scrollbar">
+      <div id="categoryTabs" class="flex gap-1 py-2"></div>
+      <button onclick="openCategoryModal()" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium shrink-0 ml-4 py-2 flex items-center gap-1">
+        <i class="fa-solid fa-gear"></i> カテゴリ管理
+      </button>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="max-w-6xl mx-auto px-4 mt-6">
+    <div id="galleryNotice" class="hidden mb-4 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-300 px-4 py-3 rounded-xl text-xs flex items-center justify-between gap-2 shadow-sm">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-circle-info text-indigo-600 dark:text-indigo-400 text-base"></i>
+        <span>画像をクリックすると設定中のモード（<strong id="activeModeText">Aのみ</strong>）でテキストがコピーされます。</span>
+      </div>
+    </div>
+
+    <div id="itemContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+  </main>
+
+  <!-- モーダル・トースト等各種ダイアログは共通 -->
+  <div id="modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50 overflow-y-auto">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 my-8 border border-slate-200 dark:border-slate-700">
+      <h2 id="modalTitle" class="text-lg font-bold">カードの作成</h2>
+      
+      <form id="cardForm" onsubmit="saveItem(event)" class="space-y-4">
+        <input type="hidden" id="itemId">
+        
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">タイトル</label>
+          <input type="text" id="itemTitle" required class="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">カテゴリ</label>
+          <select id="itemCategory" class="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+        </div>
+        
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">画像の設定</label>
+          <div class="space-y-2">
+            <div id="dropArea" class="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-4 text-center cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 transition bg-slate-50 dark:bg-slate-700/50" onclick="document.getElementById('fileInput').click()">
+              <i class="fa-solid fa-cloud-arrow-up text-2xl text-indigo-500 mb-1"></i>
+              <p class="text-xs text-slate-600 dark:text-slate-300">PCの画像をドラッグ＆ドロップ<br>またはクリックして選択</p>
+              <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
+            </div>
+            <div id="imagePreviewContainer" class="hidden relative rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 max-h-40">
+              <img id="imagePreview" class="w-full h-full object-cover">
+              <button type="button" onclick="removeImage()" class="absolute top-2 right-2 bg-slate-900/70 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">×</button>
+            </div>
+            <input type="url" id="itemImage" placeholder="または画像URLを直接入力 https://..." class="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" oninput="handleUrlInput(this.value)">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">テキスト A（メイン）</label>
+          <textarea id="itemTextA" rows="2" required class="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="メインでコピーしたいテキスト"></textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">テキスト B（補足・オプション）</label>
+          <textarea id="itemTextB" rows="2" class="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="追加で結合したいテキスト（任意）"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">キャンセル</button>
+          <button type="submit" class="px-4 py-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- カテゴリ管理モーダル -->
+  <div id="categoryModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4 border border-slate-200 dark:border-slate-700">
+      <h2 class="text-lg font-bold">カテゴリ（タブ）の管理</h2>
+      <div class="flex gap-2">
+        <input type="text" id="newCategoryInput" placeholder="新しいカテゴリ名" class="flex-1 border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-1.5 text-sm">
+        <button onclick="addCategory()" class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium shrink-0">追加</button>
+      </div>
+      <div id="categoryList" class="space-y-2 max-h-60 overflow-y-auto"></div>
+      <div class="flex justify-end pt-2">
+        <button onclick="closeCategoryModal()" class="px-4 py-1.5 text-xs bg-slate-200 dark:bg-slate-700 rounded-lg font-medium">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toast" class="fixed bottom-6 right-6 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 transition-all duration-300 transform translate-y-20 opacity-0 pointer-events-none z-50 border border-slate-700 dark:border-slate-300">
+    <div class="bg-emerald-500 text-white rounded-full p-1 text-xs flex items-center justify-center w-5 h-5">
+      <i class="fa-solid fa-check"></i>
+    </div>
+    <span id="toastMessage" class="text-xs font-medium">テキストをコピーしました！</span>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. FIREBASE 設定（ここにSTEP3のキーを入力）
+    // ==========================================
+    const firebaseConfig = {
+   apiKey: "AIzaSyBC5SVr1P8ddPt4mXHHsmYUPInecD5piWY",
+  authDomain: "prompt-copy-96.firebaseapp.com",
+  databaseURL: "https://prompt-copy-96-default-rtdb.firebaseio.com",
+  projectId: "prompt-copy-96",
+  storageBucket: "prompt-copy-96.firebasestorage.app",
+  messagingSenderId: "425039905759",
+  appId: "1:425039905759:web:dc839000aad35e6f92fa6a"
+    };
+
+    let useFirebase = false;
+    let db = null;
+
+    // Firebase初期化チェック
+    if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+      try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        useFirebase = true;
+      } catch (e) {
+        console.error("Firebase Initialization Error:", e);
+      }
+    }
+
+    // ==========================================
+    // アプリケーション状態管理
+    // ==========================================
+    const defaultCategories = ["すべて", "プロンプト", "カラーコード"];
+    const defaultData = [
+      { id: "1", title: "ファンタジー背景", category: "プロンプト", textA: "masterpiece, highly detailed fantasy landscape", textB: "--ar 16:9 --v 6.0", imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500" },
+      { id: "2", title: "ブランドカラー", category: "カラーコード", textA: "#6366F1", textB: "Primary Indigo Color", imageUrl: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=500" }
+    ];
+
+    let items = [];
+    let categories = JSON.parse(localStorage.getItem('clip_gallery_categories')) || defaultCategories;
+    let currentCategory = "すべて";
+    let currentView = localStorage.getItem('clip_gallery_view') || 'list';
+    let copyMode = localStorage.getItem('clip_gallery_copymode') || 'A';
+    let currentBase64Image = '';
+
+    // UI & 同期初期化
+    window.addEventListener('DOMContentLoaded', () => {
+      initDarkMode();
+      updateCopyModeUI();
+
+      if (useFirebase) {
+        document.getElementById('syncStatus').innerHTML = '<i class="fa-solid fa-cloud-check text-emerald-500"></i> クラウドリアルタイム同期中';
+        document.getElementById('syncStatus').className = "text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5";
+
+        // リアルタイムリスナー設定
+        db.collection('items').onSnapshot((snapshot) => {
+          items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          render();
+        });
+
+        db.collection('settings').doc('categories').onSnapshot((doc) => {
+          if (doc.exists) {
+            categories = doc.data().list || defaultCategories;
+          } else {
+            db.collection('settings').doc('categories').set({ list: defaultCategories });
+          }
+          renderCategories();
+        });
+
+      } else {
+        items = JSON.parse(localStorage.getItem('clip_gallery_items')) || defaultData;
+        renderCategories();
+        render();
+      }
+    });
+
+    // ==========================================
+    // データ保存・削除操作（Firebase / LocalStorage 自動分岐）
+    // ==========================================
+    function saveData() {
+      if (!useFirebase) {
+        localStorage.setItem('clip_gallery_items', JSON.stringify(items));
+        localStorage.setItem('clip_gallery_categories', JSON.stringify(categories));
+        render();
+      }
+    }
+
+    function saveItem(e) {
+      e.preventDefault();
+      const id = document.getElementById('itemId').value;
+      const title = document.getElementById('itemTitle').value;
+      const category = document.getElementById('itemCategory').value;
+      const textA = document.getElementById('itemTextA').value;
+      const textB = document.getElementById('itemTextB').value;
+      const imageUrl = currentBase64Image || document.getElementById('itemImage').value;
+
+      if (!imageUrl) {
+        alert("画像をアップロードするかURLを入力してください。");
+        return;
+      }
+
+      const itemData = { title, category, textA, textB, imageUrl, updatedAt: Date.now() };
+
+      if (useFirebase) {
+        if (id) {
+          db.collection('items').doc(id).update(itemData);
+        } else {
+          db.collection('items').add(itemData);
+        }
+      } else {
+        if (id) {
+          const idx = items.findIndex(i => i.id === id);
+          items[idx] = { id, ...itemData };
+        } else {
+          items.push({ id: Date.now().toString(), ...itemData });
+        }
+        saveData();
+      }
+
+      closeModal();
+      showToast("カードを保存しました！");
+    }
+
+    function deleteItem(id) {
+      if (!confirm("本当に削除しますか？")) return;
+      if (useFirebase) {
+        db.collection('items').doc(id).delete();
+      } else {
+        items = items.filter(i => i.id !== id);
+        saveData();
+      }
+      showToast("削除しました");
+    }
+
+    // ==========================================
+    // カテゴリ管理
+    // ==========================================
+    function renderCategories() {
+      const container = document.getElementById('categoryTabs');
+      container.innerHTML = '';
+
+      categories.forEach(cat => {
+        const count = cat === "すべて" ? items.length : items.filter(i => i.category === cat).length;
+        const isActive = cat === currentCategory;
+        
+        container.innerHTML += `
+          <button onclick="switchCategory('${cat}')" class="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
+            isActive 
+              ? 'bg-indigo-600 text-white shadow-sm' 
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+          }">
+            ${cat}
+            <span class="px-1.5 py-0.2 rounded-full text-[10px] ${isActive ? 'bg-indigo-800 text-indigo-100' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}">${count}</span>
+          </button>
+        `;
+      });
+    }
+
+    function switchCategory(cat) {
+      currentCategory = cat;
+      renderCategories();
+      render();
+    }
+
+    function openCategoryModal() {
+      document.getElementById('categoryModal').classList.remove('hidden');
+      const list = document.getElementById('categoryList');
+      list.innerHTML = '';
+      categories.filter(c => c !== "すべて").forEach(cat => {
+        list.innerHTML += `
+          <div class="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 p-2 rounded-lg text-xs">
+            <span>${cat}</span>
+            <button onclick="removeCategory('${cat}')" class="text-red-500 hover:text-red-700 font-medium">削除</button>
+          </div>
+        `;
+      });
+    }
+
+    function closeCategoryModal() {
+      document.getElementById('categoryModal').classList.add('hidden');
+    }
+
+    function addCategory() {
+      const input = document.getElementById('newCategoryInput');
+      const val = input.value.trim();
+      if (!val || categories.includes(val)) return;
+      
+      categories.push(val);
+      if (useFirebase) {
+        db.collection('settings').doc('categories').set({ list: categories });
+      } else {
+        saveData();
+      }
+      input.value = '';
+      openCategoryModal();
+      renderCategories();
+    }
+
+    function removeCategory(cat) {
+      categories = categories.filter(c => c !== cat);
+      if (useFirebase) {
+        db.collection('settings').doc('categories').set({ list: categories });
+      } else {
+        saveData();
+      }
+      if (currentCategory === cat) currentCategory = "すべて";
+      openCategoryModal();
+      renderCategories();
+    }
+
+    // ==========================================
+    // コピー機能＆表示制御
+    // ==========================================
+    function setCopyMode(mode) {
+      copyMode = mode;
+      localStorage.setItem('clip_gallery_copymode', mode);
+      updateCopyModeUI();
+      if (currentView === 'gallery') render();
+    }
+
+    function updateCopyModeUI() {
+      const btnA = document.getElementById('btnModeA');
+      const btnAB = document.getElementById('btnModeAB');
+      const activeText = document.getElementById('activeModeText');
+
+      if (copyMode === 'A') {
+        btnA.className = "px-2.5 py-1 rounded-md text-xs font-bold transition bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm";
+        btnAB.className = "px-2.5 py-1 rounded-md text-xs font-bold transition text-slate-600 dark:text-slate-400 hover:text-slate-900";
+        if (activeText) activeText.innerText = "Aのみ";
+      } else {
+        btnAB.className = "px-2.5 py-1 rounded-md text-xs font-bold transition bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm";
+        btnA.className = "px-2.5 py-1 rounded-md text-xs font-bold transition text-slate-600 dark:text-slate-400 hover:text-slate-900";
+        if (activeText) activeText.innerText = "A + B";
+      }
+    }
+
+    function copyText(id, target = 'GLOBAL') {
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+
+      let textToCopy = "";
+      if (target === 'A') textToCopy = item.textA;
+      else if (target === 'B') textToCopy = item.textB || "";
+      else textToCopy = copyMode === 'A' ? item.textA : `${item.textA} ${item.textB || ""}`.trim();
+
+      if (!textToCopy) return;
+
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        showToast("コピーしました！");
+      });
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastMessage').innerText = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 2000);
+    }
+
+    // ==========================================
+    // メイン描画処理
+    // ==========================================
+    function render() {
+      renderCategories();
+      const container = document.getElementById('itemContainer');
+      const notice = document.getElementById('galleryNotice');
+      container.innerHTML = '';
+
+      const filteredItems = currentCategory === "すべて" 
+        ? items 
+        : items.filter(i => i.category === currentCategory);
+
+      if (currentView === 'list') {
+        notice.classList.add('hidden');
+        container.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6";
+
+        filteredItems.forEach(item => {
+          container.innerHTML += `
+            <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col transition hover:shadow-md">
+              <div class="relative h-48 bg-slate-100 dark:bg-slate-700">
+                <img src="${item.imageUrl}" class="w-full h-full object-cover" alt="${item.title}">
+                <span class="absolute top-3 left-3 bg-slate-900/70 backdrop-blur-md text-white text-[10px] font-semibold px-2.5 py-1 rounded-full">${item.category || "未分類"}</span>
+              </div>
+              <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
+                <div>
+                  <h3 class="font-bold text-slate-800 dark:text-slate-100 text-base">${item.title}</h3>
+                  <div class="mt-2 space-y-1.5">
+                    <div class="bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-700/50">
+                      <span class="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 block mb-0.5">テキスト A</span>
+                      <p class="text-xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap">${item.textA}</p>
+                    </div>
+                    ${item.textB ? `
+                    <div class="bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-700/50">
+                      <span class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block mb-0.5">テキスト B</span>
+                      <p class="text-xs font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap">${item.textB}</p>
+                    </div>` : ''}
+                  </div>
+                </div>
+
+                <div class="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-700/60 text-xs">
+                  <div class="flex gap-2">
+                    <button onclick="copyText('${item.id}', 'A')" class="text-indigo-600 dark:text-indigo-400 font-medium hover:underline flex items-center gap-1">
+                      <i class="fa-regular fa-copy"></i> Aコピー
+                    </button>
+                    ${item.textB ? `
+                    <button onclick="copyText('${item.id}', 'B')" class="text-emerald-600 dark:text-emerald-400 font-medium hover:underline flex items-center gap-1">
+                      <i class="fa-regular fa-copy"></i> Bコピー
+                    </button>` : ''}
+                  </div>
+                  <div class="space-x-2">
+                    <button onclick="openModal('${item.id}')" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">編集</button>
+                    <button onclick="deleteItem('${item.id}')" class="text-red-400 hover:text-red-600">削除</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+      } else {
+        notice.classList.remove('hidden');
+        container.className = "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4";
+
+        filteredItems.forEach(item => {
+          container.innerHTML += `
+            <div onclick="copyText('${item.id}')" class="group relative bg-slate-200 dark:bg-slate-700 rounded-xl overflow-hidden shadow-sm cursor-pointer aspect-square hover:shadow-lg transition">
+              <img src="${item.imageUrl}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" alt="${item.title}">
+              <div class="absolute inset-0 bg-slate-900/70 opacity-0 group-hover:opacity-100 transition flex flex-col justify-end p-3 text-white">
+                <span class="text-xs font-bold line-clamp-1">${item.title}</span>
+                <span class="text-[10px] text-indigo-300 mt-1"><i class="fa-regular fa-copy"></i> クリックで (${copyMode}) コピー</span>
+              </div>
+            </div>
+          `;
+        });
+      }
+    }
+
+    function switchView(view) {
+      currentView = view;
+      localStorage.setItem('clip_gallery_view', view);
+      const btnList = document.getElementById('btnViewList');
+      const btnGallery = document.getElementById('btnViewGallery');
+
+      if (view === 'list') {
+        btnList.className = "px-3 py-1 rounded-md text-xs font-medium transition bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm";
+        btnGallery.className = "px-3 py-1 rounded-md text-xs font-medium transition text-slate-600 dark:text-slate-400 hover:text-slate-900";
+      } else {
+        btnGallery.className = "px-3 py-1 rounded-md text-xs font-medium transition bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm";
+        btnList.className = "px-3 py-1 rounded-md text-xs font-medium transition text-slate-600 dark:text-slate-400 hover:text-slate-900";
+      }
+      render();
+    }
+
+    // 画像処理＆モーダル＆ダークモード共通関数
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width, height = img.height;
+          const max = 800;
+          if (width > height && width > max) { height *= max / width; width = max; }
+          else if (height > max) { width *= max / height; height = max; }
+          canvas.width = width; canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          currentBase64Image = canvas.toDataURL('image/jpeg', 0.8);
+          showPreview(currentBase64Image);
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function showPreview(url) {
+      document.getElementById('imagePreview').src = url;
+      document.getElementById('imagePreviewContainer').classList.remove('hidden');
+      document.getElementById('dropArea').classList.add('hidden');
+    }
+
+    function removeImage() {
+      currentBase64Image = '';
+      document.getElementById('itemImage').value = '';
+      document.getElementById('imagePreviewContainer').classList.add('hidden');
+      document.getElementById('dropArea').classList.remove('hidden');
+    }
+
+    function handleUrlInput(val) {
+      if (val) { currentBase64Image = ''; document.getElementById('imagePreviewContainer').classList.add('hidden'); }
+    }
+
+    function openModal(id = null) {
+      const select = document.getElementById('itemCategory');
+      select.innerHTML = categories.filter(c => c !== "すべて").map(c => `<option value="${c}">${c}</option>`).join('');
+      removeImage();
+
+      if (id) {
+        const item = items.find(i => i.id === id);
+        document.getElementById('modalTitle').innerText = "カードの編集";
+        document.getElementById('itemId').value = item.id;
+        document.getElementById('itemTitle').value = item.title;
+        document.getElementById('itemCategory').value = item.category || categories[1];
+        document.getElementById('itemTextA').value = item.textA;
+        document.getElementById('itemTextB').value = item.textB || "";
+        if (item.imageUrl.startsWith('data:')) {
+          currentBase64Image = item.imageUrl;
+          showPreview(item.imageUrl);
+        } else {
+          document.getElementById('itemImage').value = item.imageUrl;
+        }
+      } else {
+        document.getElementById('modalTitle').innerText = "カードの作成";
+        document.getElementById('cardForm').reset();
+        document.getElementById('itemId').value = '';
+        if (currentCategory !== "すべて") document.getElementById('itemCategory').value = currentCategory;
+      }
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+
+    function toggleDarkMode() {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      localStorage.setItem('clip_gallery_theme', isDark ? 'dark' : 'light');
+      document.getElementById('darkModeIcon').className = isDark ? "fa-solid fa-sun" : "fa-solid fa-moon";
+    }
+
+    function initDarkMode() {
+      const savedTheme = localStorage.getItem('clip_gallery_theme');
+      if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+        document.getElementById('darkModeIcon').className = "fa-solid fa-sun";
+      }
+    }
+  </script>
+</body>
+</html>
