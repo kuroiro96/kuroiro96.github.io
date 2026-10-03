@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClipGallery Pro - お気に入り機能付き</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    /* 5段階のサイズ変更用CSS変数グリッド */
+    .gallery-grid {
+      display: grid;
+      gap: 0.5rem;
+      width: 100%;
+      grid-template-columns: repeat(var(--gallery-cols, 9), minmax(0, 1fr));
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    .dragging {
+      opacity: 0.4;
+      transform: scale(0.98);
+    }
+    .drag-over-item {
+      border-top: 2px solid #6366f1 !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen transition-colors duration-200 pb-12" onclick="closeAllMenus()" onload="init()">
+
+  <header class="bg-white dark:bg-slate-800 shadow-sm sticky top-0 z-20 transition-colors border-b dark:border-slate-700">
+    <div class="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap justify-between items-center gap-3">
+      
+      <h1 class="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+        <i class="fa-solid fa-copy text-indigo-600 dark:text-indigo-400"></i> ClipGallery
+      </h1>
+
+      <div class="flex items-center gap-2">
+        <!-- お気に入りフィルター切替ボタン -->
+        <button id="btnFavFilter" onclick="toggleFavoriteFilter()" class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border dark:border-slate-600">
+          <i class="fa-solid fa-star text-amber-400"></i> お気に入り
+        </button>
+        
+        <div class="bg-slate-100 dark:bg-slate-700 p-1 rounded-lg flex items-center gap-1 border dark:border-slate-600">
+          <button id="btnModeA" onclick="setCopyMode('modeA')" class="px-2 py-0.5 rounded-md text-xs font-bold transition">
+            Aのみ
+          </button>
+          <button id="btnModeAB" onclick="setCopyMode('modeAB')" class="px-2 py-0.5 rounded-md text-xs font-bold transition">
+            A + B
+          </button>
+        </div>
+
+        <div class="bg-slate-100 dark:bg-slate-700 p-1 rounded-lg flex gap-1 border dark:border-slate-600">
+          <button id="btnViewList" onclick="switchView('list')" class="px-2.5 py-0.5 rounded-md text-xs font-medium transition">
+            <i class="fa-solid fa-list-check mr-1"></i>一覧
+          </button>
+          <button id="btnViewGallery" onclick="switchView('gallery')" class="px-2.5 py-0.5 rounded-md text-xs font-medium transition">
+            <i class="fa-solid fa-border-all mr-1"></i>画像一覧
+          </button>
+        </div>
+
+        <!-- 画像サイズ調整スライダー（画像一覧ビュー時のみヘッダーに表示・カード追加の左に配置） -->
+        <div id="gallerySizeControl" class="hidden items-center gap-1.5 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg border dark:border-slate-600 text-xs">
+          <i class="fa-solid fa-magnifying-glass-minus text-slate-400 text-[10px]"></i>
+          <input type="range" id="gallerySizeRange" min="1" max="5" step="1" value="3" oninput="changeGallerySize(this.value)" class="w-16 accent-indigo-600 cursor-pointer">
+          <i class="fa-solid fa-magnifying-glass-plus text-slate-400 text-[10px]"></i>
+          <span id="gallerySizeLabel" class="text-[10px] font-bold text-slate-500 dark:text-slate-400 w-6 text-center">中</span>
+        </div>
+
+        <button onclick="openModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm">
+          <i class="fa-solid fa-plus"></i> <span class="hidden sm:inline">カード追加</span>
+        </button>
+
+        <button onclick="toggleDarkMode()" class="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-amber-400 transition" title="テーマ切り替え">
+          <i id="themeIcon" class="fa-solid fa-moon"></i>
+        </button>
+
+        <div class="flex items-center border-l dark:border-slate-700 pl-1.5 gap-0.5 text-slate-400">
+          <button onclick="exportData()" title="バックアップ書き出し(JSON)" class="p-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition text-xs">
+            <i class="fa-solid fa-download"></i>
+          </button>
+          <button onclick="triggerImport()" title="バックアップ読み込み(JSON)" class="p-1.5 hover:text-emerald-600 dark:hover:text-emerald-400 rounded transition text-xs">
+            <i class="fa-solid fa-upload"></i>
+          </button>
+          <input type="file" id="importFileInput" accept=".json" class="hidden" onchange="handleImportFile(event)">
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-[1600px] mx-auto px-4 mt-3">
+
+    <div class="border-b border-slate-200 dark:border-slate-700 mb-2 flex items-center justify-between gap-2">
+      <div id="tabList" class="flex items-center gap-1 overflow-x-auto no-scrollbar pt-1 flex-1 select-none"></div>
+      <button onclick="openCategoryManageModal('tab')" title="タブ編集" class="shrink-0 text-[11px] px-2 py-1 mb-1 bg-slate-200/80 dark:bg-slate-700/80 hover:bg-indigo-600 hover:text-white rounded-lg transition font-medium flex items-center gap-1">
+        <i class="fa-solid fa-sliders text-[10px]"></i> <span class="hidden sm:inline">タブ編集</span>
+      </button>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4 bg-white/60 dark:bg-slate-800/60 p-2 rounded-xl border dark:border-slate-700/60 backdrop-blur-sm">
+      <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs flex-1 select-none" id="categoryChips"></div>
+      
+      <div class="flex items-center gap-3 shrink-0">
+        <button onclick="openCategoryManageModal('category')" class="shrink-0 text-[11px] px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 rounded-lg transition font-medium flex items-center gap-1 border border-indigo-200 dark:border-indigo-800/50">
+          <i class="fa-solid fa-sliders text-[10px]"></i> カテゴリー編集
+        </button>
+      </div>
+    </div>
+
+    <div id="itemContainer"></div>
+  </main>
+
+  <div id="globalContextMenu" class="fixed hidden bg-white dark:bg-slate-800 rounded-xl shadow-2xl border dark:border-slate-700 py-1 z-50 text-xs w-32 backdrop-blur-md" onclick="event.stopPropagation()"></div>
+
+  <!-- カード作成・編集モーダル -->
+  <div id="modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto border dark:border-slate-700" onclick="event.stopPropagation()">
+      <h2 id="modalTitle" class="text-lg font-bold text-slate-800 dark:text-white">カードの作成</h2>
+      
+      <form id="cardForm" onsubmit="saveItem(event)" class="space-y-4">
+        <input type="hidden" id="itemId">
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">タイトル</label>
+          <input type="text" id="itemTitle" required class="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">所属タブ</label>
+            <select id="itemTab" class="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"></select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">カテゴリー</label>
+            <select id="itemCategory" class="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"></select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">画像設定</label>
+          <div class="space-y-2">
+            <div id="dropZone" onclick="document.getElementById('fileInput').click()" class="border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-indigo-500 rounded-xl p-3 text-center cursor-pointer bg-slate-50 dark:bg-slate-700/50 transition">
+              <i class="fa-solid fa-cloud-arrow-up text-xl text-slate-400 mb-1"></i>
+              <p class="text-xs text-slate-600 dark:text-slate-300">クリックまたはドラッグ＆ドロップで画像を選択</p>
+              <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
+            </div>
+            <input type="url" id="itemImage" placeholder="画像URLを入力 (https://...)" class="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" oninput="updateImagePreview(this.value)">
+          </div>
+          <div id="imagePreviewContainer" class="mt-2 hidden">
+            <img id="imagePreview" class="h-24 w-full object-cover rounded-lg border dark:border-slate-600">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">テキスト A（メイン）</label>
+          <textarea id="itemTextA" rows="2" required class="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="例: サイバーパンクな街並み"></textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">テキスト B（補足）<span class="text-slate-400 font-normal">（任意）</span></label>
+          <textarea id="itemTextB" rows="2" class="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="例: --ar 9:16 --v 6.0"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">キャンセル</button>
+          <button type="submit" class="px-4 py-2 text-xs bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- カテゴリー・タブ 統合管理モーダル -->
+  <div id="categoryManageModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-5 space-y-4 border dark:border-slate-700 max-h-[85vh] flex flex-col" onclick="event.stopPropagation()">
+      
+      <div class="flex justify-between items-center border-b pb-3 dark:border-slate-700">
+        <h2 class="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-indigo-600 dark:text-indigo-400"></i> カテゴリー・タブ編集
+        </h2>
+        <button onclick="closeCategoryManageModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1">
+          <i class="fa-solid fa-xmark text-base"></i>
+        </button>
+      </div>
+
+      <div class="flex border-b border-slate-200 dark:border-slate-700 text-xs font-semibold shrink-0">
+        <button id="modalTabCatBtn" onclick="switchModalTab('category')" class="px-4 py-2 border-b-2 border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400 transition">
+          <i class="fa-solid fa-tags mr-1"></i>カテゴリー編集
+        </button>
+        <button id="modalTabTabBtn" onclick="switchModalTab('tab')" class="px-4 py-2 border-b-2 border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 transition">
+          <i class="fa-regular fa-folder mr-1"></i>タブ編集
+        </button>
+      </div>
+
+      <div id="modalCategorySection" class="space-y-3 flex-1 overflow-y-auto pr-1">
+        <div class="flex gap-2">
+          <input type="text" id="modalNewCatInput" placeholder="新しいカテゴリー名を入力" class="flex-1 border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white" onkeydown="if(event.key==='Enter') addCategoryFromModal()">
+          <button onclick="addCategoryFromModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0">
+            <i class="fa-solid fa-plus text-[10px]"></i> 追加
+          </button>
+        </div>
+        <p class="text-[11px] text-slate-400 dark:text-slate-500">ドラッグまたは上下ボタンで並び替えできます。</p>
+        <div id="modalCategoryList" class="space-y-1.5"></div>
+      </div>
+
+      <div id="modalTabSection" class="space-y-3 flex-1 overflow-y-auto pr-1 hidden">
+        <div class="flex gap-2">
+          <input type="text" id="modalNewTabInput" placeholder="新しいタブ名を入力" class="flex-1 border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white" onkeydown="if(event.key==='Enter') addTabFromModal()">
+          <button onclick="addTabFromModal()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0">
+            <i class="fa-solid fa-plus text-[10px]"></i> 追加
+          </button>
+        </div>
+        <p class="text-[11px] text-slate-400 dark:text-slate-500">ドラッグまたは上下ボタンで並び替えできます。</p>
+        <div id="modalTabList" class="space-y-1.5"></div>
+      </div>
+
+      <div class="flex justify-end pt-2 border-t dark:border-slate-700 shrink-0">
+        <button onclick="closeCategoryManageModal()" class="px-4 py-1.5 text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 font-medium transition">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed bottom-6 right-6 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 transition-all duration-300 transform translate-y-20 opacity-0 pointer-events-none z-50">
+    <div class="bg-emerald-500 text-white rounded-full p-1 text-[10px]">
+      <i class="fa-solid fa-check"></i>
+    </div>
+    <span id="toastMessage" class="text-xs font-medium">テキストをコピーしました！</span>
+  </div>
+
+  <script>
+    const defaultData = {
+      tabs: ["AIプロンプト", "デザイン"],
+      categories: ["人物", "風景", "スタイル", "カラー", "未分類"],
+      items: [
+        { id: "1", tab: "AIプロンプト", category: "風景", title: "サイバーパンク都市", textA: "A futuristic cyberpunk city with neon lights and rain", textB: "--ar 9:16 --v 6.0", imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500", isFavorite: true },
+        { id: "2", tab: "デザイン", category: "カラー", title: "カラーグラデーション", textA: "Main: #6366F1", textB: "Sub: #10B981, Accent: #F59E0B", imageUrl: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=500", isFavorite: false }
+      ],
+      settings: { copyMode: "modeA", darkMode: false, galleryLevel: 3 }
+    };
+
+    let tabs = JSON.parse(localStorage.getItem('cg_tabs')) || defaultData.tabs;
+    let categories = JSON.parse(localStorage.getItem('cg_categories')) || defaultData.categories;
+    let items = JSON.parse(localStorage.getItem('cg_items')) || defaultData.items;
+    let copyMode = localStorage.getItem('cg_copymode') || 'modeA';
+    let isDarkMode = JSON.parse(localStorage.getItem('cg_darkmode')) || false;
+    let galleryLevel = parseInt(localStorage.getItem('cg_gallery_level')) || 3;
+    
+    let currentView = 'list';
+    let selectedTab = 'all';
+    let selectedCategory = 'all';
+    let onlyFavorite = false;
+
+    let modalDragCatIndex = null;
+    let modalDragTabIndex = null;
+    let currentRenderToken = 0;
+
+    // --- IndexedDB のセットアップと操作 ---
+    const DB_NAME = 'ClipGalleryDB';
+    const STORE_NAME = 'images';
+    let db = null;
+
+    function initDB() {
+      return new Promise((resolve, reject) => {
+        if (db) { resolve(db); return; }
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onerror = (event) => reject(event.target.error);
+        request.onsuccess = (event) => {
+          db = event.target.result;
+          resolve(db);
+        };
+        request.onupgradeneeded = (event) => {
+          const database = event.target.result;
+          if (!database.objectStoreNames.contains(STORE_NAME)) {
+            database.createObjectStore(STORE_NAME);
+          }
+        };
+      });
+    }
+
+    function saveImageToDB(id, dataUrl) {
+      return initDB().then(database => {
+        return new Promise((resolve, reject) => {
+          const transaction = database.transaction(STORE_NAME, 'readwrite');
+          const store = transaction.objectStore(STORE_NAME);
+          const request = store.put(dataUrl, id);
+          request.onsuccess = () => resolve();
+          request.onerror = (e) => reject(e.target.error);
+        });
+      });
+    }
+
+    function getImageFromDB(id) {
+      return initDB().then(database => {
+        return new Promise((resolve, reject) => {
+          const transaction = database.transaction(STORE_NAME, 'readonly');
+          const store = transaction.objectStore(STORE_NAME);
+          const request = store.get(id);
+          request.onsuccess = (e) => resolve(e.target.result);
+          request.onerror = (e) => reject(e.target.error);
+        });
+      });
+    }
+
+    function deleteImageFromDB(id) {
+      return initDB().then(database => {
+        return new Promise((resolve, reject) => {
+          const transaction = database.transaction(STORE_NAME, 'readwrite');
+          const store = transaction.objectStore(STORE_NAME);
+          const request = store.delete(id);
+          request.onsuccess = () => resolve();
+          request.onerror = (e) => reject(e.target.error);
+        });
+      });
+    }
+
+    async function init() {
+      applyTheme();
+      updateCopyModeUI();
+      updateFavoriteFilterUI();
+      setupDragAndDrop();
+      setupDragScroll('categoryChips');
+      setupDragScroll('tabList');
+
+      for (let item of items) {
+        if (item.imageUrl && item.imageUrl.startsWith('data:')) {
+          await saveImageToDB(item.id, item.imageUrl);
+          item.imageUrl = `indexeddb://${item.id}`;
+        }
+      }
+      saveAll();
+      render();
+    }
+
+    function setupDragScroll(elementId) {
+      const container = document.getElementById(elementId);
+      if (!container) return;
+
+      let isDown = false;
+      let startX;
+      let scrollLeft;
+
+      container.addEventListener('mousedown', (e) => {
+        isDown = true;
+        container.classList.add('cursor-grabbing');
+        container.classList.remove('cursor-grab');
+        startX = e.pageX - container.offsetLeft;
+        scrollLeft = container.scrollLeft;
+      });
+
+      container.addEventListener('mouseleave', () => {
+        isDown = false;
+        container.classList.remove('cursor-grabbing');
+        container.classList.add('cursor-grab');
+      });
+
+      container.addEventListener('mouseup', () => {
+        isDown = false;
+        container.classList.remove('cursor-grabbing');
+        container.classList.add('cursor-grab');
+      });
+
+      container.addEventListener('mousemove', (e) => {
+        if (!isDown) return;
+        e.preventDefault();
+        const x = e.pageX - container.offsetLeft;
+        const walk = (x - startX) * 1.5;
+        container.scrollLeft = scrollLeft - walk;
+      });
+
+      container.classList.add('cursor-grab');
+    }
+
+    function saveAll() {
+      const lightweightItems = items.map(item => {
+        let url = item.imageUrl;
+        if (url && url.startsWith('data:')) {
+          url = `indexeddb://${item.id}`;
+        }
+        return { ...item, imageUrl: url };
+      });
+
+      localStorage.setItem('cg_tabs', JSON.stringify(tabs));
+      localStorage.setItem('cg_categories', JSON.stringify(categories));
+      localStorage.setItem('cg_items', JSON.stringify(lightweightItems));
+      localStorage.setItem('cg_copymode', copyMode);
+      localStorage.setItem('cg_darkmode', JSON.stringify(isDarkMode));
+      localStorage.setItem('cg_gallery_level', galleryLevel);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
+    function escapeJs(str) {
+      if (!str) return '';
+      return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+    }
+
+    async function exportData() {
+      const exportedItems = [];
+      for (const item of items) {
+        let url = item.imageUrl;
+        if (url && url.startsWith('indexeddb://')) {
+          const id = url.replace('indexeddb://', '');
+          url = await getImageFromDB(id) || '';
+        }
+        exportedItems.push({ ...item, imageUrl: url });
+      }
+
+      const data = {
+        version: "1.8",
+        exportedAt: new Date().toISOString(),
+        tabs, categories, items: exportedItems,
+        settings: { copyMode, darkMode: isDarkMode, galleryLevel }
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `clip_gallery_backup_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast("JSONファイルを保存しました！");
+    }
+
+    function triggerImport() {
+      document.getElementById('importFileInput').click();
+    }
+
+    function handleImportFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (!data.items || !Array.isArray(data.items)) throw new Error("フォーマット不整合");
+          if (confirm(`データ（カード ${data.items.length}件）を復元しますか？`)) {
+            items = [];
+            for (const item of data.items) {
+              if (item.imageUrl && item.imageUrl.startsWith('data:')) {
+                await saveImageToDB(item.id, item.imageUrl);
+                item.imageUrl = `indexeddb://${item.id}`;
+              }
+              items.push(item);
+            }
+            tabs = data.tabs || ["メイン"];
+            categories = data.categories || ["未分類"];
+            if (data.settings) {
+              if (data.settings.copyMode) copyMode = data.settings.copyMode;
+              if (typeof data.settings.darkMode === 'boolean') isDarkMode = data.settings.darkMode;
+              if (data.settings.galleryLevel) galleryLevel = data.settings.galleryLevel;
+            }
+            saveAll();
+            applyTheme();
+            updateCopyModeUI();
+            selectedTab = 'all';
+            selectedCategory = 'all';
+            onlyFavorite = false;
+            updateFavoriteFilterUI();
+            render();
+            showToast("データを正常に復元しました！");
+          }
+        } catch (err) {
+          alert("JSONファイルの読み込みエラー: " + err.message);
+        }
+        event.target.value = '';
+      };
+      reader.readAsText(file);
+    }
+
+    function setCopyMode(mode) {
+      copyMode = mode;
+      saveAll();
+      updateCopyModeUI();
+      showToast(mode === 'modeA' ? "コピー設定: テキストAのみ" : "コピー設定: テキストA + B");
+    }
+
+    function updateCopyModeUI() {
+      const btnA = document.getElementById('btnModeA');
+      const btnAB = document.getElementById('btnModeAB');
+
+      if (copyMode === 'modeA') {
+        btnA.className = "px-2 py-0.5 rounded-md text-xs font-bold transition bg-white dark:bg-slate-600 text-indigo-600 dark:text-indigo-300 shadow-sm";
+        btnAB.className = "px-2 py-0.5 rounded-md text-xs font-bold transition text-slate-500 dark:text-slate-400 hover:text-slate-800";
+      } else {
+        btnAB.className = "px-2 py-0.5 rounded-md text-xs font-bold transition bg-white dark:bg-slate-600 text-indigo-600 dark:text-indigo-300 shadow-sm";
+        btnA.className = "px-2 py-0.5 rounded-md text-xs font-bold transition text-slate-500 dark:text-slate-400 hover:text-slate-800";
+      }
+    }
+
+    function toggleFavoriteFilter() {
+      onlyFavorite = !onlyFavorite;
+      updateFavoriteFilterUI();
+      render();
+    }
+
+    function updateFavoriteFilterUI() {
+      const btn = document.getElementById('btnFavFilter');
+      if (onlyFavorite) {
+        btn.className = "px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-amber-500 text-white shadow-sm";
+      } else {
+        btn.className = "px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border dark:border-slate-600";
+      }
+    }
+
+    function toggleFavorite(event, id) {
+      event.stopPropagation();
+      const item = items.find(i => i.id === id);
+      if (item) {
+        item.isFavorite = !item.isFavorite;
+        saveAll();
+        render();
+        showToast(item.isFavorite ? "お気に入りに追加しました" : "お気に入りから解除しました");
+      }
+    }
+
+    function toggleDarkMode() {
+      isDarkMode = !isDarkMode;
+      applyTheme();
+      saveAll();
+    }
+
+    function applyTheme() {
+      const icon = document.getElementById('themeIcon');
+      if (isDarkMode) {
+        document.documentElement.classList.add('dark');
+        icon.className = "fa-solid fa-sun";
+      } else {
+        document.documentElement.classList.remove('dark');
+        icon.className = "fa-solid fa-moon";
+      }
+    }
+
+    function copyText(text, label = "テキスト") {
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(`${label} をコピーしました！`);
+      });
+    }
+
+    // A + B をコピーする際に改行しないように修正した部分
+    function copyByMode(item) {
+      const textToCopy = (copyMode === 'modeAB' && item.textB) ? `${item.textA}${item.textB}` : item.textA;
+      const label = copyMode === 'modeAB' ? "テキスト A + B" : "テキスト A";
+      copyText(textToCopy, label);
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastMessage').innerText = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 2000);
+    }
+
+    function openCardContextMenu(e, itemId) {
+      e.stopPropagation();
+      e.preventDefault();
+      closeAllMenus();
+
+      const btn = e.currentTarget;
+      const rect = btn.getBoundingClientRect();
+      const menu = document.getElementById('globalContextMenu');
+
+      menu.innerHTML = `
+        <button onclick="closeAllMenus(); openModal('${itemId}')" class="w-full text-left px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-slate-700 dark:text-slate-200">
+          <i class="fa-solid fa-pen text-slate-400"></i> 編集
+        </button>
+        <button onclick="closeAllMenus(); deleteItem('${itemId}')" class="w-full text-left px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 text-red-600 dark:text-red-400">
+          <i class="fa-solid fa-trash"></i> 削除
+        </button>
+      `;
+
+      menu.style.top = `${rect.top - 70}px`;
+      menu.style.left = `${Math.min(rect.left, window.innerWidth - 140)}px`;
+      menu.classList.remove('hidden');
+    }
+
+    function closeAllMenus() {
+      const menu = document.getElementById('globalContextMenu');
+      if (menu) menu.classList.add('hidden');
+    }
+
+    function render() {
+      renderTabs();
+      renderCategoryChips();
+      renderContainer();
+    }
+
+    function renderTabs() {
+      const tabList = document.getElementById('tabList');
+      tabList.innerHTML = '';
+
+      const isAll = selectedTab === 'all';
+      tabList.innerHTML += `
+        <div onclick="selectTab('all')" 
+             class="cursor-pointer px-4 py-2 border-b-2 text-xs font-semibold flex items-center gap-2 whitespace-nowrap transition duration-150 ${
+               isAll 
+               ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-t-lg' 
+               : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+             }">
+          <i class="fa-solid fa-border-all text-[11px]"></i>
+          <span>すべてのタブ</span>
+          <span class="text-[10px] px-1.5 py-0.2 rounded-full ${isAll ? 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'}">${items.length}</span>
+        </div>
+      `;
+
+      tabs.forEach((tabName) => {
+        const count = items.filter(i => i.tab === tabName).length;
+        const isSelected = selectedTab === tabName;
+
+        const tabElement = document.createElement('div');
+        tabElement.className = `group relative flex items-center cursor-pointer border-b-2 transition duration-150 rounded-t-lg ${
+          isSelected 
+          ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30' 
+          : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+        }`;
+
+        tabElement.innerHTML = `
+          <div onclick="selectTab('${escapeJs(tabName)}')" class="px-3.5 py-2 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap">
+            <i class="fa-regular fa-folder text-[11px]"></i>
+            <span>${escapeHtml(tabName)}</span>
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'}">${count}</span>
+          </div>
+        `;
+
+        tabList.appendChild(tabElement);
+      });
+    }
+
+    function selectTab(tabName) {
+      selectedTab = tabName;
+      selectedCategory = 'all';
+      render();
+    }
+
+    function renderCategoryChips() {
+      const container = document.getElementById('categoryChips');
+      container.innerHTML = '';
+
+      const tabItems = selectedTab === 'all' ? items : items.filter(i => i.tab === selectedTab);
+
+      const isAllCat = selectedCategory === 'all';
+      container.innerHTML += `
+        <button onclick="selectCategory('all')" 
+                class="px-3 py-1 rounded-lg font-medium whitespace-nowrap transition shrink-0 cursor-pointer ${
+                  isAllCat 
+                  ? 'bg-indigo-600 text-white shadow-sm' 
+                  : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                }">
+          全カテゴリー (${tabItems.length})
+        </button>
+      `;
+
+      categories.forEach((cat) => {
+        const count = tabItems.filter(i => (i.category || '未分類') === cat).length;
+        const isCatSelected = selectedCategory === cat;
+
+        const catElement = document.createElement('div');
+        catElement.className = "group relative flex items-center shrink-0";
+
+        catElement.innerHTML = `
+          <button onclick="selectCategory('${escapeJs(cat)}')" 
+                  class="px-3 py-1 rounded-lg font-medium whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                    isCatSelected 
+                    ? 'bg-indigo-600 text-white shadow-sm' 
+                    : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                  }">
+            <i class="fa-solid fa-tag text-[10px] opacity-70"></i>
+            <span>${escapeHtml(cat)}</span>
+            <span class="text-[10px] opacity-70">(${count})</span>
+          </button>
+        `;
+
+        container.appendChild(catElement);
+      });
+    }
+
+    function selectCategory(cat) {
+      selectedCategory = cat;
+      renderContainer();
+      renderCategoryChips();
+    }
+
+    function changeGallerySize(level) {
+      galleryLevel = parseInt(level);
+      saveAll();
+      applyGallerySize();
+    }
+
+    function applyGallerySize() {
+      const container = document.getElementById('itemContainer');
+      const label = document.getElementById('gallerySizeLabel');
+      
+      const colMap = { 1: 2, 2: 4, 3: 6, 4: 9, 5: 12 };
+      const labelMap = { 1: "特大", 2: "大", 3: "中", 4: "小", 5: "極小" };
+      
+      const cols = colMap[galleryLevel] || 6;
+      container.style.setProperty('--gallery-cols', cols);
+      if (label) label.innerText = labelMap[galleryLevel] || "中";
+      
+      const rangeInput = document.getElementById('gallerySizeRange');
+      if (rangeInput && rangeInput.value != galleryLevel) {
+        rangeInput.value = galleryLevel;
+      }
+    }
+
+    async function renderContainer() {
+      const renderToken = ++currentRenderToken;
+      
+      const container = document.getElementById('itemContainer');
+      const sizeControl = document.getElementById('gallerySizeControl');
+      
+      container.innerHTML = '';
+      container.className = '';
+
+      if (currentView === 'gallery') {
+        sizeControl.classList.remove('hidden');
+        sizeControl.classList.add('flex');
+        applyGallerySize();
+      } else {
+        sizeControl.classList.add('hidden');
+        sizeControl.classList.remove('flex');
+      }
+
+      const filtered = items.filter(item => {
+        const matchTab = (selectedTab === 'all' || item.tab === selectedTab);
+        const matchCat = (selectedCategory === 'all' || (item.category || '未分類') === selectedCategory);
+        const matchFav = (!onlyFavorite || item.isFavorite);
+        return matchTab && matchCat && matchFav;
+      });
+
+      if (filtered.length === 0) {
+        if (renderToken !== currentRenderToken) return;
+        container.innerHTML = `
+          <div class="text-center py-16 text-slate-400 text-xs flex flex-col items-center gap-2">
+            <i class="fa-regular fa-folder-open text-3xl opacity-50"></i>
+            <p>該当するカードが見つかりません。</p>
+            <button onclick="openModal()" class="mt-2 text-indigo-600 dark:text-indigo-400 font-bold hover:underline">
+              + 新しいカードを追加する
+            </button>
+          </div>`;
+        return;
+      }
+
+      const resolveImageUrl = async (item) => {
+        if (item.imageUrl && item.imageUrl.startsWith('indexeddb://')) {
+          const id = item.imageUrl.replace('indexeddb://', '');
+          return await getImageFromDB(id) || '';
+        }
+        return item.imageUrl;
+      };
+
+      if (currentView === 'list') {
+        container.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5";
+
+        for (const item of filtered) {
+          const resolvedUrl = await resolveImageUrl(item);
+          if (renderToken !== currentRenderToken) return;
+
+          const favClass = item.isFavorite ? "text-amber-400 bg-white/90 dark:bg-slate-800/90 shadow" : "text-slate-400 bg-white/70 dark:bg-slate-800/70 hover:text-amber-400";
+          
+          const cardEl = document.createElement('div');
+          cardEl.className = "bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col transition";
+          cardEl.innerHTML = `
+            <div class="relative group cursor-pointer" onclick="copyByMode(items.find(i => i.id === '${item.id}'))">
+              <div class="aspect-[9/16] max-h-52 w-full overflow-hidden bg-slate-900">
+                <img src="${resolvedUrl}" class="w-full h-full object-cover">
+              </div>
+              <div class="absolute top-2 left-2 flex gap-1 flex-wrap max-w-[70%]">
+                <span class="bg-slate-900/80 text-white text-[10px] px-2 py-0.5 rounded-full backdrop-blur-sm font-medium">
+                  <i class="fa-regular fa-folder mr-1"></i>${escapeHtml(item.tab || 'メイン')}
+                </span>
+                <span class="bg-indigo-600/90 text-white text-[10px] px-2 py-0.5 rounded-full backdrop-blur-sm font-medium">
+                  <i class="fa-solid fa-tag mr-1 text-[9px]"></i>${escapeHtml(item.category || '未分類')}
+                </span>
+              </div>
+              <button onclick="toggleFavorite(event, '${item.id}')" class="absolute top-2 right-2 p-1.5 rounded-full transition ${favClass}" title="お気に入り">
+                <i class="fa-solid fa-star text-sm"></i>
+              </button>
+              <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-bold gap-1">
+                <i class="fa-regular fa-copy"></i> クリックでコピー
+              </div>
+            </div>
+            <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
+              <div>
+                <h3 class="font-bold text-sm text-slate-800 dark:text-white">${escapeHtml(item.title)}</h3>
+                <div class="mt-2 space-y-1.5">
+                  <div class="bg-slate-50 dark:bg-slate-700/50 p-2 rounded-lg border dark:border-slate-700 flex justify-between items-start gap-2">
+                    <div class="text-xs font-mono text-slate-700 dark:text-slate-300 break-all"><span class="text-[10px] text-indigo-500 font-bold block">テキスト A</span>${escapeHtml(item.textA)}</div>
+                    <button onclick="event.stopPropagation(); copyText('${escapeJs(item.textA)}', 'テキストA')" class="text-indigo-600 dark:text-indigo-400 text-xs hover:underline whitespace-nowrap"><i class="fa-regular fa-copy"></i></button>
+                  </div>
+                  ${item.textB ? `
+                    <div class="bg-slate-50 dark:bg-slate-700/50 p-2 rounded-lg border dark:border-slate-700 flex justify-between items-start gap-2">
+                      <div class="text-xs font-mono text-slate-600 dark:text-slate-400 break-all"><span class="text-[10px] text-emerald-500 font-bold block">テキスト B</span>${escapeHtml(item.textB)}</div>
+                      <button onclick="event.stopPropagation(); copyText('${escapeJs(item.textB)}', 'テキストB')" class="text-emerald-600 dark:text-emerald-400 text-xs hover:underline whitespace-nowrap"><i class="fa-regular fa-copy"></i></button>
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+              <div class="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-700 text-xs">
+                <button onclick="copyByMode(items.find(i => i.id === '${item.id}'))" class="text-indigo-600 dark:text-indigo-400 font-bold hover:underline flex items-center gap-1">
+                  <i class="fa-solid fa-copy"></i> コピー
+                </button>
+                <button onclick="openCardContextMenu(event, '${item.id}')" class="p-1 px-2.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+                  <i class="fa-solid fa-ellipsis-vertical text-sm"></i>
+                </button>
+              </div>
+            </div>
+          `;
+          container.appendChild(cardEl);
+        }
+      } else {
+        container.className = "gallery-grid";
+
+        for (const item of filtered) {
+          const resolvedUrl = await resolveImageUrl(item);
+          if (renderToken !== currentRenderToken) return;
+
+          const favStarColor = item.isFavorite ? "text-amber-400" : "text-white/60 hover:text-amber-400";
+          
+          const gridEl = document.createElement('div');
+          gridEl.className = "relative bg-slate-200 dark:bg-slate-800 rounded-lg overflow-hidden shadow-sm aspect-[9/16] group";
+          gridEl.innerHTML = `
+            <div class="absolute inset-0 cursor-pointer" onclick="copyByMode(items.find(i => i.id === '${item.id}'))">
+              <img src="${resolvedUrl}" class="w-full h-full object-cover">
+            </div>
+            <div class="absolute top-1 left-1 right-1 flex justify-between items-center pointer-events-none">
+              <span class="text-[9px] bg-slate-900/80 text-white px-1 py-0.5 rounded truncate max-w-[70%]">${escapeHtml(item.category || '未分類')}</span>
+              <button onclick="toggleFavorite(event, '${item.id}')" class="p-1 pointer-events-auto ${favStarColor} transition" title="お気に入り">
+                <i class="fa-solid fa-star text-xs"></i>
+              </button>
+            </div>
+            <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex flex-col justify-end p-1 text-white pointer-events-none">
+              <div class="text-center text-[10px] font-bold">
+                <i class="fa-regular fa-copy"></i> コピー
+              </div>
+            </div>
+          `;
+          container.appendChild(gridEl);
+        }
+      }
+    }
+
+    function switchView(view) {
+      currentView = view;
+      document.getElementById('btnViewList').className = view === 'list' 
+        ? "px-2.5 py-0.5 rounded-md text-xs font-medium transition bg-white dark:bg-slate-600 text-indigo-600 dark:text-indigo-300 shadow-sm"
+        : "px-2.5 py-0.5 rounded-md text-xs font-medium transition text-slate-600 dark:text-slate-300 hover:text-slate-900";
+      
+      document.getElementById('btnViewGallery').className = view === 'gallery' 
+        ? "px-2.5 py-0.5 rounded-md text-xs font-medium transition bg-white dark:bg-slate-600 text-indigo-600 dark:text-indigo-300 shadow-sm"
+        : "px-2.5 py-0.5 rounded-md text-xs font-medium transition text-slate-600 dark:text-slate-300 hover:text-slate-900";
+      
+      render();
+    }
+
+    async function openModal(id = null) {
+      closeAllMenus();
+      const modal = document.getElementById('modal');
+      
+      const tabSelect = document.getElementById('itemTab');
+      tabSelect.innerHTML = tabs.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+
+      const catSelect = document.getElementById('itemCategory');
+      catSelect.innerHTML = categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+
+      modal.classList.remove('hidden');
+
+      if (id) {
+        const item = items.find(i => i.id === id);
+        document.getElementById('modalTitle').innerText = "カードの編集";
+        document.getElementById('itemId').value = item.id;
+        document.getElementById('itemTitle').value = item.title;
+        document.getElementById('itemTab').value = item.tab || tabs[0];
+        document.getElementById('itemCategory').value = item.category || categories[0];
+        document.getElementById('itemTextA').value = item.textA;
+        document.getElementById('itemTextB').value = item.textB || '';
+
+        let imageUrl = item.imageUrl;
+        if (imageUrl && imageUrl.startsWith('indexeddb://')) {
+          const dbId = imageUrl.replace('indexeddb://', '');
+          imageUrl = await getImageFromDB(dbId) || '';
+        }
+        document.getElementById('itemImage').value = imageUrl;
+        updateImagePreview(imageUrl);
+      } else {
+        document.getElementById('modalTitle').innerText = "カードの作成";
+        document.getElementById('cardForm').reset();
+        document.getElementById('itemId').value = '';
+        if (selectedTab !== 'all') document.getElementById('itemTab').value = selectedTab;
+        if (selectedCategory !== 'all') document.getElementById('itemCategory').value = selectedCategory;
+        document.getElementById('imagePreviewContainer').classList.add('hidden');
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.add('hidden');
+    }
+
+    function updateImagePreview(url) {
+      const container = document.getElementById('imagePreviewContainer');
+      const img = document.getElementById('imagePreview');
+      if (url) {
+        img.src = url;
+        container.classList.remove('hidden');
+      } else {
+        container.classList.add('hidden');
+      }
+    }
+
+    function setupDragAndDrop() {
+      const dropZone = document.getElementById('dropZone');
+      if (!dropZone) return;
+      dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('border-indigo-500'); });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-indigo-500'));
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-indigo-500');
+        if (e.dataTransfer.files.length) processImageFile(e.dataTransfer.files[0]);
+      });
+    }
+
+    function handleFileSelect(e) {
+      if (e.target.files.length) processImageFile(e.target.files[0]);
+    }
+
+    function processImageFile(file) {
+      if (!file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 800;
+          let w = img.width, h = img.height;
+          if (w > h && w > MAX_SIZE) { h *= MAX_SIZE / w; w = MAX_SIZE; }
+          else if (h > MAX_SIZE) { w *= MAX_SIZE / h; h = MAX_SIZE; }
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+          document.getElementById('itemImage').value = compressedDataUrl;
+          updateImagePreview(compressedDataUrl);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function saveItem(e) {
+      e.preventDefault();
+      const id = document.getElementById('itemId').value || Date.now().toString();
+      const existing = items.find(i => i.id === id);
+
+      const rawImageUrl = document.getElementById('itemImage').value;
+      
+      if (rawImageUrl && rawImageUrl.startsWith('data:')) {
+        await saveImageToDB(id, rawImageUrl);
+      }
+
+      const newItem = {
+        id: id,
+        title: document.getElementById('itemTitle').value,
+        tab: document.getElementById('itemTab').value,
+        category: document.getElementById('itemCategory').value,
+        imageUrl: rawImageUrl.startsWith('data:') ? `indexeddb://${id}` : rawImageUrl,
+        textA: document.getElementById('itemTextA').value,
+        textB: document.getElementById('itemTextB').value,
+        isFavorite: existing ? existing.isFavorite : false
+      };
+
+      if (existing) {
+        const idx = items.findIndex(i => i.id === id);
+        if (idx !== -1) items[idx] = newItem;
+      } else {
+        items.unshift(newItem);
+      }
+
+      saveAll();
+      closeModal();
+      render();
+      showToast("カードを保存しました！");
+    }
+
+    async function deleteItem(id) {
+      if (confirm("このカードを削除してもよろしいですか？")) {
+        items = items.filter(i => i.id !== id);
+        await deleteImageFromDB(id);
+        saveAll();
+        render();
+        showToast("カードを削除しました");
+      }
+    }
+
+    function openCategoryManageModal(activeTab = 'category') {
+      closeAllMenus();
+      const modal = document.getElementById('categoryManageModal');
+      modal.classList.remove('hidden');
+      switchModalTab(activeTab);
+    }
+
+    function closeCategoryManageModal() {
+      document.getElementById('categoryManageModal').classList.add('hidden');
+    }
+
+    function switchModalTab(tabType) {
+      const catBtn = document.getElementById('modalTabCatBtn');
+      const tabBtn = document.getElementById('modalTabTabBtn');
+      const catSec = document.getElementById('modalCategorySection');
+      const tabSec = document.getElementById('modalTabSection');
+
+      if (tabType === 'category') {
+        catBtn.className = "px-4 py-2 border-b-2 border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400 font-bold transition";
+        tabBtn.className = "px-4 py-2 border-b-2 border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 transition font-medium";
+        catSec.classList.remove('hidden');
+        tabSec.classList.add('hidden');
+        renderModalCategoryList();
+      } else {
+        tabBtn.className = "px-4 py-2 border-b-2 border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400 font-bold transition";
+        catBtn.className = "px-4 py-2 border-b-2 border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 transition font-medium";
+        tabSec.classList.remove('hidden');
+        catSec.classList.add('hidden');
+        renderModalTabList();
+      }
+    }
+
+    function renderModalCategoryList() {
+      const container = document.getElementById('modalCategoryList');
+      container.innerHTML = '';
+
+      categories.forEach((cat, index) => {
+        const itemEl = document.createElement('div');
+        itemEl.className = "flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 p-2 rounded-xl border dark:border-slate-700 group transition hover:border-indigo-300 dark:hover:border-slate-600";
+        itemEl.draggable = true;
+        itemEl.ondragstart = (e) => { modalDragCatIndex = index; e.dataTransfer.effectAllowed = 'move'; itemEl.classList.add('dragging'); };
+        itemEl.ondragover = (e) => { e.preventDefault(); itemEl.classList.add('drag-over-item'); };
+        itemEl.ondragleave = () => itemEl.classList.remove('drag-over-item');
+        itemEl.ondrop = (e) => {
+          e.preventDefault();
+          itemEl.classList.remove('drag-over-item');
+          if (modalDragCatIndex === null || modalDragCatIndex === index) return;
+          const moved = categories.splice(modalDragCatIndex, 1)[0];
+          categories.splice(index, 0, moved);
+          modalDragCatIndex = null;
+          saveAll();
+          render();
+          renderModalCategoryList();
+        };
+        itemEl.ondragend = () => {
+          modalDragCatIndex = null;
+          document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+          document.querySelectorAll('.drag-over-item').forEach(el => el.classList.remove('drag-over-item'));
+        };
+
+        itemEl.innerHTML = `
+          <div class="flex items-center gap-2 flex-1 min-w-0 mr-2">
+            <i class="fa-solid fa-grip-vertical text-slate-300 dark:text-slate-600 cursor-grab active:cursor-grabbing text-xs"></i>
+            <span class="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">${escapeHtml(cat)}</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="moveCategoryDir(${index}, -1)" ${index === 0 ? 'disabled class="opacity-30 p-1 text-slate-400"' : 'class="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition"'} title="上へ移動"><i class="fa-solid fa-chevron-up"></i></button>
+            <button onclick="moveCategoryDir(${index}, 1)" ${index === categories.length - 1 ? 'disabled class="opacity-30 p-1 text-slate-400"' : 'class="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition"'} title="下へ移動"><i class="fa-solid fa-chevron-down"></i></button>
+            <button onclick="renameCategoryFromModal(${index})" class="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition" title="名前変更"><i class="fa-solid fa-pen"></i></button>
+            <button onclick="deleteCategoryFromModal(${index})" class="p-1 text-slate-400 hover:text-red-500 text-xs transition" title="削除"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        `;
+        container.appendChild(itemEl);
+      });
+    }
+
+    function addCategoryFromModal() {
+      const input = document.getElementById('modalNewCatInput');
+      const name = input.value.trim();
+      if (!name) return;
+      if (categories.includes(name)) {
+        alert("同名のカテゴリーが既に存在します。");
+        return;
+      }
+      categories.push(name);
+      input.value = '';
+      saveAll();
+      render();
+      renderModalCategoryList();
+      showToast(`カテゴリー「${name}」を追加しました`);
+    }
+
+    function moveCategoryDir(index, direction) {
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= categories.length) return;
+      const moved = categories.splice(index, 1)[0];
+      categories.splice(targetIndex, 0, moved);
+      saveAll();
+      render();
+      renderModalCategoryList();
+    }
+
+    function renameCategoryFromModal(index) {
+      const oldName = categories[index];
+      const newName = prompt("新しいカテゴリー名を入力してください:", oldName);
+      if (!newName || newName.trim() === '' || newName === oldName) return;
+      
+      const trimmed = newName.trim();
+      if (categories.includes(trimmed)) {
+        alert("同名のカテゴリーが既に存在します。");
+        return;
+      }
+
+      categories[index] = trimmed;
+      items.forEach(item => { if (item.category === oldName) item.category = trimmed; });
+      if (selectedCategory === oldName) selectedCategory = trimmed;
+
+      saveAll();
+      render();
+      renderModalCategoryList();
+      showToast("カテゴリー名を更新しました");
+    }
+
+    function deleteCategoryFromModal(index) {
+      const catName = categories[index];
+      if (categories.length <= 1) {
+        alert("最低1つのカテゴリーが必要です。");
+        return;
+      }
+
+      if (confirm(`カテゴリー「${catName}」を削除しますか？\n（該当カードのカテゴリーは「未分類」になります）`)) {
+        categories.splice(index, 1);
+        items.forEach(item => { if (item.category === catName) item.category = "未分類"; });
+        if (!categories.includes("未分類")) categories.push("未分類");
+        if (selectedCategory === catName) selectedCategory = 'all';
+
+        saveAll();
+        render();
+        renderModalCategoryList();
+        showToast("カテゴリーを削除しました");
+      }
+    }
+
+    function renderModalTabList() {
+      const container = document.getElementById('modalTabList');
+      container.innerHTML = '';
+
+      tabs.forEach((tabName, index) => {
+        const itemEl = document.createElement('div');
+        itemEl.className = "flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 p-2 rounded-xl border dark:border-slate-700 group transition hover:border-indigo-300 dark:hover:border-slate-600";
+        itemEl.draggable = true;
+        itemEl.ondragstart = (e) => { modalDragTabIndex = index; e.dataTransfer.effectAllowed = 'move'; itemEl.classList.add('dragging'); };
+        itemEl.ondragover = (e) => { e.preventDefault(); itemEl.classList.add('drag-over-item'); };
+        itemEl.ondragleave = () => itemEl.classList.remove('drag-over-item');
+        itemEl.ondrop = (e) => {
+          e.preventDefault();
+          itemEl.classList.remove('drag-over-item');
+          if (modalDragTabIndex === null || modalDragTabIndex === index) return;
+          const moved = tabs.splice(modalDragTabIndex, 1)[0];
+          tabs.splice(index, 0, moved);
+          modalDragTabIndex = null;
+          saveAll();
+          render();
+          renderModalTabList();
+        };
+        itemEl.ondragend = () => {
+          modalDragTabIndex = null;
+          document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+          document.querySelectorAll('.drag-over-item').forEach(el => el.classList.remove('drag-over-item'));
+        };
+
+        itemEl.innerHTML = `
+          <div class="flex items-center gap-2 flex-1 min-w-0 mr-2">
+            <i class="fa-solid fa-grip-vertical text-slate-300 dark:text-slate-600 cursor-grab active:cursor-grabbing text-xs"></i>
+            <span class="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">${escapeHtml(tabName)}</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="moveTabDir(${index}, -1)" ${index === 0 ? 'disabled class="opacity-30 p-1 text-slate-400"' : 'class="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition"'} title="上へ移動"><i class="fa-solid fa-chevron-up"></i></button>
+            <button onclick="moveTabDir(${index}, 1)" ${index === tabs.length - 1 ? 'disabled class="opacity-30 p-1 text-slate-400"' : 'class="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition"'} title="下へ移動"><i class="fa-solid fa-chevron-down"></i></button>
+            <button onclick="renameTabFromModal(${index})" class="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs transition" title="名前変更"><i class="fa-solid fa-pen"></i></button>
+            <button onclick="deleteTabFromModal(${index})" class="p-1 text-slate-400 hover:text-red-500 text-xs transition" title="削除"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        `;
+        container.appendChild(itemEl);
+      });
+    }
+
+    function addTabFromModal() {
+      const input = document.getElementById('modalNewTabInput');
+      const name = input.value.trim();
+      if (!name) return;
+      if (tabs.includes(name)) {
+        alert("同名のタブが既に存在します。");
+        return;
+      }
+      tabs.push(name);
+      input.value = '';
+      saveAll();
+      render();
+      renderModalTabList();
+      showToast(`タブ「${name}」を追加しました`);
+    }
+
+    function moveTabDir(index, direction) {
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= tabs.length) return;
+      const moved = tabs.splice(index, 1)[0];
+      tabs.splice(targetIndex, 0, moved);
+      saveAll();
+      render();
+      renderModalTabList();
+    }
+
+    function renameTabFromModal(index) {
+      const oldName = tabs[index];
+      const newName = prompt("新しいタブ名を入力してください:", oldName);
+      if (!newName || newName.trim() === '' || newName === oldName) return;
+      
+      const trimmed = newName.trim();
+      if (tabs.includes(trimmed)) {
+        alert("同名のタブが既に存在します。");
+        return;
+      }
+
+      tabs[index] = trimmed;
+      items.forEach(item => { if (item.tab === oldName) item.tab = trimmed; });
+      if (selectedTab === oldName) selectedTab = trimmed;
+
+      saveAll();
+      render();
+      renderModalTabList();
+      showToast("タブ名を更新しました");
+    }
+
+    function deleteTabFromModal(index) {
+      const tabName = tabs[index];
+      if (tabs.length <= 1) {
+        alert("最低1つのタブが必要です。");
+        return;
+      }
+
+      if (confirm(`タブ「${tabName}」を削除しますか？\n（所属するカードは「${tabs[index === 0 ? 1 : 0]}」タブへ移動します）`)) {
+        tabs.splice(index, 1);
+        const fallbackTab = tabs[0];
+        items.forEach(item => { if (item.tab === tabName) item.tab = fallbackTab; });
+        if (selectedTab === tabName) selectedTab = 'all';
+
+        saveAll();
+        render();
+        renderModalTabList();
+        showToast("タブを削除しました");
+      }
+    }
+  </script>
+</body>
+</html>
