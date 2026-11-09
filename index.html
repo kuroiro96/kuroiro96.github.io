@@ -39,86 +39,91 @@
 </head>
 <body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen transition-colors duration-200 pb-12" onclick="closeAllMenus()" onload="init()">
 
-  <header class="bg-white dark:bg-slate-800 shadow-sm sticky top-0 z-20 transition-colors border-b dark:border-slate-700">
-    <div class="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap justify-between items-center gap-3">
-      
-      <h1 class="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-        <i class="fa-solid fa-copy text-indigo-600 dark:text-indigo-400"></i> ClipGallery
-      </h1>
-
-      <div class="flex items-center gap-2">
-        <!-- お気に入りフィルター切替ボタン -->
-        <button id="btnFavFilter" onclick="toggleFavoriteFilter()" class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border dark:border-slate-600">
-          <i class="fa-solid fa-star text-amber-400"></i> お気に入り
-        </button>
+  <!-- ヘッダーおよびスクロール時に固定するナビゲーションエリアをまとめて sticky container に包む -->
+  <div class="sticky top-0 z-20 bg-slate-100/90 dark:bg-slate-900/90 backdrop-blur-md shadow-sm transition-colors border-b dark:border-slate-700/80">
+    <header class="bg-white dark:bg-slate-800 shadow-sm border-b dark:border-slate-700">
+      <div class="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap justify-between items-center gap-3">
         
-        <div class="bg-slate-100 dark:bg-slate-700 p-1 rounded-lg flex items-center gap-1 border dark:border-slate-600">
-          <button id="btnModeA" onclick="setCopyMode('modeA')" class="px-2 py-0.5 rounded-md text-xs font-bold transition">
-            Aのみ
-          </button>
-          <button id="btnModeAB" onclick="setCopyMode('modeAB')" class="px-2 py-0.5 rounded-md text-xs font-bold transition">
-            A + B
-          </button>
-        </div>
+        <h1 class="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+          <i class="fa-solid fa-copy text-indigo-600 dark:text-indigo-400"></i> ClipGallery
+        </h1>
 
-        <div class="bg-slate-100 dark:bg-slate-700 p-1 rounded-lg flex gap-1 border dark:border-slate-600">
-          <button id="btnViewList" onclick="switchView('list')" class="px-2.5 py-0.5 rounded-md text-xs font-medium transition">
-            <i class="fa-solid fa-list-check mr-1"></i>一覧
+        <div class="flex items-center gap-2">
+          <!-- お気に入りフィルター切替ボタン -->
+          <button id="btnFavFilter" onclick="toggleFavoriteFilter()" class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border dark:border-slate-600">
+            <i class="fa-solid fa-star text-amber-400"></i> お気に入り
           </button>
-          <button id="btnViewGallery" onclick="switchView('gallery')" class="px-2.5 py-0.5 rounded-md text-xs font-medium transition">
-            <i class="fa-solid fa-border-all mr-1"></i>画像一覧
+          
+          <div class="bg-slate-100 dark:bg-slate-700 p-1 rounded-lg flex items-center gap-1 border dark:border-slate-600">
+            <button id="btnModeA" onclick="setCopyMode('modeA')" class="px-2 py-0.5 rounded-md text-xs font-bold transition">
+              Aのみ
+            </button>
+            <button id="btnModeAB" onclick="setCopyMode('modeAB')" class="px-2 py-0.5 rounded-md text-xs font-bold transition">
+              A + B
+            </button>
+          </div>
+
+          <div class="bg-slate-100 dark:bg-slate-700 p-1 rounded-lg flex gap-1 border dark:border-slate-600">
+            <button id="btnViewList" onclick="switchView('list')" class="px-2.5 py-0.5 rounded-md text-xs font-medium transition">
+              <i class="fa-solid fa-list-check mr-1"></i>一覧
+            </button>
+            <button id="btnViewGallery" onclick="switchView('gallery')" class="px-2.5 py-0.5 rounded-md text-xs font-medium transition">
+              <i class="fa-solid fa-border-all mr-1"></i>画像一覧
+            </button>
+          </div>
+
+          <!-- 画像サイズ調整スライダー（画像一覧ビュー時のみヘッダーに表示・カード追加の左に配置） -->
+          <div id="gallerySizeControl" class="hidden items-center gap-1.5 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg border dark:border-slate-600 text-xs">
+            <i class="fa-solid fa-magnifying-glass-minus text-slate-400 text-[10px]"></i>
+            <input type="range" id="gallerySizeRange" min="1" max="5" step="1" value="3" oninput="changeGallerySize(this.value)" class="w-16 accent-indigo-600 cursor-pointer">
+            <i class="fa-solid fa-magnifying-glass-plus text-slate-400 text-[10px]"></i>
+            <span id="gallerySizeLabel" class="text-[10px] font-bold text-slate-500 dark:text-slate-400 w-6 text-center">中</span>
+          </div>
+
+          <button onclick="openModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm">
+            <i class="fa-solid fa-plus"></i> <span class="hidden sm:inline">カード追加</span>
           </button>
-        </div>
 
-        <!-- 画像サイズ調整スライダー（画像一覧ビュー時のみヘッダーに表示・カード追加の左に配置） -->
-        <div id="gallerySizeControl" class="hidden items-center gap-1.5 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg border dark:border-slate-600 text-xs">
-          <i class="fa-solid fa-magnifying-glass-minus text-slate-400 text-[10px]"></i>
-          <input type="range" id="gallerySizeRange" min="1" max="5" step="1" value="3" oninput="changeGallerySize(this.value)" class="w-16 accent-indigo-600 cursor-pointer">
-          <i class="fa-solid fa-magnifying-glass-plus text-slate-400 text-[10px]"></i>
-          <span id="gallerySizeLabel" class="text-[10px] font-bold text-slate-500 dark:text-slate-400 w-6 text-center">中</span>
-        </div>
+          <button onclick="toggleDarkMode()" class="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-amber-400 transition" title="テーマ切り替え">
+            <i id="themeIcon" class="fa-solid fa-moon"></i>
+          </button>
 
-        <button onclick="openModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm">
-          <i class="fa-solid fa-plus"></i> <span class="hidden sm:inline">カード追加</span>
+          <div class="flex items-center border-l dark:border-slate-700 pl-1.5 gap-0.5 text-slate-400">
+            <button onclick="exportData()" title="バックアップ書き出し(JSON)" class="p-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition text-xs">
+              <i class="fa-solid fa-download"></i>
+            </button>
+            <button onclick="triggerImport()" title="バックアップ読み込み(JSON)" class="p-1.5 hover:text-emerald-600 dark:hover:text-emerald-400 rounded transition text-xs">
+              <i class="fa-solid fa-upload"></i>
+            </button>
+            <input type="file" id="importFileInput" accept=".json" class="hidden" onchange="handleImportFile(event)">
+          </div>
+
+        </div>
+      </div>
+    </header>
+
+    <!-- タブおよびカテゴリー部分も sticky 内に収めることで、スクロールしても一緒に固定追従します -->
+    <div class="max-w-[1600px] mx-auto px-4 py-2 space-y-2">
+      <div class="border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
+        <div id="tabList" class="flex items-center gap-1 overflow-x-auto no-scrollbar pt-1 flex-1 select-none"></div>
+        <button onclick="openCategoryManageModal('tab')" title="タブ編集" class="shrink-0 text-[11px] px-2 py-1 mb-1 bg-slate-200/80 dark:bg-slate-700/80 hover:bg-indigo-600 hover:text-white rounded-lg transition font-medium flex items-center gap-1">
+          <i class="fa-solid fa-sliders text-[10px]"></i> <span class="hidden sm:inline">タブ編集</span>
         </button>
+      </div>
 
-        <button onclick="toggleDarkMode()" class="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-amber-400 transition" title="テーマ切り替え">
-          <i id="themeIcon" class="fa-solid fa-moon"></i>
-        </button>
-
-        <div class="flex items-center border-l dark:border-slate-700 pl-1.5 gap-0.5 text-slate-400">
-          <button onclick="exportData()" title="バックアップ書き出し(JSON)" class="p-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition text-xs">
-            <i class="fa-solid fa-download"></i>
+      <div class="flex flex-wrap items-center justify-between gap-2 bg-white/80 dark:bg-slate-800/80 p-2 rounded-xl border dark:border-slate-700/60 backdrop-blur-sm shadow-xs">
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs flex-1 select-none" id="categoryChips"></div>
+        
+        <div class="flex items-center gap-3 shrink-0">
+          <button onclick="openCategoryManageModal('category')" class="shrink-0 text-[11px] px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 rounded-lg transition font-medium flex items-center gap-1 border border-indigo-200 dark:border-indigo-800/50">
+            <i class="fa-solid fa-sliders text-[10px]"></i> カテゴリー編集
           </button>
-          <button onclick="triggerImport()" title="バックアップ読み込み(JSON)" class="p-1.5 hover:text-emerald-600 dark:hover:text-emerald-400 rounded transition text-xs">
-            <i class="fa-solid fa-upload"></i>
-          </button>
-          <input type="file" id="importFileInput" accept=".json" class="hidden" onchange="handleImportFile(event)">
         </div>
-
       </div>
     </div>
-  </header>
+  </div>
 
   <main class="max-w-[1600px] mx-auto px-4 mt-3">
-
-    <div class="border-b border-slate-200 dark:border-slate-700 mb-2 flex items-center justify-between gap-2">
-      <div id="tabList" class="flex items-center gap-1 overflow-x-auto no-scrollbar pt-1 flex-1 select-none"></div>
-      <button onclick="openCategoryManageModal('tab')" title="タブ編集" class="shrink-0 text-[11px] px-2 py-1 mb-1 bg-slate-200/80 dark:bg-slate-700/80 hover:bg-indigo-600 hover:text-white rounded-lg transition font-medium flex items-center gap-1">
-        <i class="fa-solid fa-sliders text-[10px]"></i> <span class="hidden sm:inline">タブ編集</span>
-      </button>
-    </div>
-
-    <div class="flex flex-wrap items-center justify-between gap-2 mb-4 bg-white/60 dark:bg-slate-800/60 p-2 rounded-xl border dark:border-slate-700/60 backdrop-blur-sm">
-      <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs flex-1 select-none" id="categoryChips"></div>
-      
-      <div class="flex items-center gap-3 shrink-0">
-        <button onclick="openCategoryManageModal('category')" class="shrink-0 text-[11px] px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 rounded-lg transition font-medium flex items-center gap-1 border border-indigo-200 dark:border-indigo-800/50">
-          <i class="fa-solid fa-sliders text-[10px]"></i> カテゴリー編集
-        </button>
-      </div>
-    </div>
-
     <div id="itemContainer"></div>
   </main>
 
@@ -276,7 +281,8 @@
     let isDarkMode = JSON.parse(localStorage.getItem('cg_darkmode')) || false;
     let galleryLevel = parseInt(localStorage.getItem('cg_gallery_level')) || 3;
     
-    let currentView = 'list';
+    // 【変更】初期ビューを 'list' から 'gallery' (画像一覧)に変更
+    let currentView = 'gallery';
     let selectedTab = 'all';
     let selectedCategory = 'all';
     let onlyFavorite = false;
