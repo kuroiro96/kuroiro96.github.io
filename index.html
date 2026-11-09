@@ -39,7 +39,7 @@
 </head>
 <body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen transition-colors duration-200 pb-12" onclick="closeAllMenus()" onload="init()">
 
-  <!-- ヘッダーおよびスクロール時に固定するナビゲーションエリアをまとめて sticky container に包む -->
+  <!-- ヘッダーおよびスクロール時に固定するナビゲーションエリア -->
   <div class="sticky top-0 z-20 bg-slate-100/90 dark:bg-slate-900/90 backdrop-blur-md shadow-sm transition-colors border-b dark:border-slate-700/80">
     <header class="bg-white dark:bg-slate-800 shadow-sm border-b dark:border-slate-700">
       <div class="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap justify-between items-center gap-3">
@@ -72,7 +72,7 @@
             </button>
           </div>
 
-          <!-- 画像サイズ調整スライダー（画像一覧ビュー時のみヘッダーに表示・カード追加の左に配置） -->
+          <!-- 画像サイズ調整スライダー（画像一覧ビュー時のみヘッダーに表示） -->
           <div id="gallerySizeControl" class="hidden items-center gap-1.5 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg border dark:border-slate-600 text-xs">
             <i class="fa-solid fa-magnifying-glass-minus text-slate-400 text-[10px]"></i>
             <input type="range" id="gallerySizeRange" min="1" max="5" step="1" value="3" oninput="changeGallerySize(this.value)" class="w-16 accent-indigo-600 cursor-pointer">
@@ -102,7 +102,7 @@
       </div>
     </header>
 
-    <!-- タブおよびカテゴリー部分も sticky 内に収めることで、スクロールしても一緒に固定追従します -->
+    <!-- タブおよびカテゴリー部分 -->
     <div class="max-w-[1600px] mx-auto px-4 py-2 space-y-2">
       <div class="border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
         <div id="tabList" class="flex items-center gap-1 overflow-x-auto no-scrollbar pt-1 flex-1 select-none"></div>
@@ -247,9 +247,7 @@
           <i class="fa-solid fa-xmark text-base"></i>
         </button>
       </div>
-      <div id="categorySelectList" class="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
-        <!-- 動的にカテゴリー一覧が生成されます -->
-      </div>
+      <div id="categorySelectList" class="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1"></div>
       <div class="flex justify-end pt-2 border-t dark:border-slate-700">
         <button onclick="closeCategorySelectModal()" class="px-4 py-1.5 text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 font-medium transition">キャンセル</button>
       </div>
@@ -281,7 +279,6 @@
     let isDarkMode = JSON.parse(localStorage.getItem('cg_darkmode')) || false;
     let galleryLevel = parseInt(localStorage.getItem('cg_gallery_level')) || 3;
     
-    // 【変更】初期ビューを 'list' から 'gallery' (画像一覧)に変更
     let currentView = 'gallery';
     let selectedTab = 'all';
     let selectedCategory = 'all';
@@ -728,7 +725,6 @@
 
       const tabItems = selectedTab === 'all' ? items : items.filter(i => i.tab === selectedTab);
 
-      // 「全カテゴリー（すべて表示）」選択ボタン
       const isAllCat = selectedCategory === 'all';
       const allBtn = document.createElement('button');
       allBtn.className = `w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition flex items-center justify-between ${
@@ -746,7 +742,6 @@
       };
       listContainer.appendChild(allBtn);
 
-      // 各カテゴリーの選択ボタン
       categories.forEach((cat) => {
         const count = tabItems.filter(i => (i.category || '未分類') === cat).length;
         const isSelected = selectedCategory === cat;
@@ -857,8 +852,9 @@
           cardEl.className = "bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col transition";
           cardEl.innerHTML = `
             <div class="relative group cursor-pointer" onclick="copyByMode(items.find(i => i.id === '${item.id}'))">
-              <div class="aspect-[9/16] max-h-52 w-full overflow-hidden bg-slate-900">
-                <img src="${resolvedUrl}" class="w-full h-full object-cover">
+              <!-- 【一覧表示】通常時は object-cover（一部切り抜き）、ホバー時(group-hover)に object-contain（全体フル表示）に切り替え -->
+              <div class="aspect-[9/16] max-h-52 w-full overflow-hidden bg-slate-900 flex items-center justify-center">
+                <img src="${resolvedUrl}" class="w-full h-full object-cover group-hover:object-contain transition-all duration-300">
               </div>
               <div class="absolute top-2 left-2 flex gap-1 flex-wrap max-w-[70%]">
                 <span class="bg-slate-900/80 text-white text-[10px] px-2 py-0.5 rounded-full backdrop-blur-sm font-medium">
@@ -913,18 +909,19 @@
           const favStarColor = item.isFavorite ? "text-amber-400" : "text-white/60 hover:text-amber-400";
           
           const gridEl = document.createElement('div');
-          gridEl.className = "relative bg-slate-200 dark:bg-slate-800 rounded-lg overflow-hidden shadow-sm aspect-[9/16] group";
+          // 【画像一覧表示】こちらは常に全体がフルで見える object-contain を維持
+          gridEl.className = "relative bg-slate-900 rounded-lg overflow-hidden shadow-sm aspect-[9/16] group flex items-center justify-center";
           gridEl.innerHTML = `
-            <div class="absolute inset-0 cursor-pointer" onclick="copyByMode(items.find(i => i.id === '${item.id}'))">
-              <img src="${resolvedUrl}" class="w-full h-full object-cover">
+            <div class="absolute inset-0 cursor-pointer flex items-center justify-center" onclick="copyByMode(items.find(i => i.id === '${item.id}'))">
+              <img src="${resolvedUrl}" class="w-full h-full object-contain">
             </div>
-            <div class="absolute top-1 left-1 right-1 flex justify-between items-center pointer-events-none">
+            <div class="absolute top-1 left-1 right-1 flex justify-between items-center pointer-events-none z-10">
               <span class="text-[9px] bg-slate-900/80 text-white px-1 py-0.5 rounded truncate max-w-[70%]">${escapeHtml(item.category || '未分類')}</span>
               <button onclick="toggleFavorite(event, '${item.id}')" class="p-1 pointer-events-auto ${favStarColor} transition" title="お気に入り">
                 <i class="fa-solid fa-star text-xs"></i>
               </button>
             </div>
-            <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex flex-col justify-end p-1 text-white pointer-events-none">
+            <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex flex-col justify-end p-1 text-white pointer-events-none z-10">
               <div class="text-center text-[10px] font-bold">
                 <i class="fa-regular fa-copy"></i> コピー
               </div>
@@ -1216,7 +1213,7 @@
         return;
       }
 
-      if (confirm(`カテゴリー「${catName}」を削除しますか？\n（該当カードのカテゴリーは「未分類」になります）`)) {
+      if (confirm(`カテゴリー「${catName}」を削除しますか？\n（該当カードのカテゴリーはプラグイン「未分類」になります）`)) {
         categories.splice(index, 1);
         items.forEach(item => { if (item.category === catName) item.category = "未分類"; });
         if (!categories.includes("未分類")) categories.push("未分類");
