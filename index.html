@@ -39,7 +39,7 @@
 </head>
 <body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen transition-colors duration-200 pb-12" onclick="closeAllMenus()" onload="init()">
 
-  <!-- ヘッダーおよびスクロール時に固定するナビゲーションエリア -->
+  <!-- ヘッダーおよびスクロール時に固定するナビゲーションエリアをまとめて sticky container に包む -->
   <div class="sticky top-0 z-20 bg-slate-100/90 dark:bg-slate-900/90 backdrop-blur-md shadow-sm transition-colors border-b dark:border-slate-700/80">
     <header class="bg-white dark:bg-slate-800 shadow-sm border-b dark:border-slate-700">
       <div class="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap justify-between items-center gap-3">
@@ -72,7 +72,7 @@
             </button>
           </div>
 
-          <!-- 画像サイズ調整スライダー（画像一覧ビュー時のみヘッダーに表示） -->
+          <!-- 画像サイズ調整スライダー（画像一覧ビュー時のみヘッダーに表示・カード追加の左に配置） -->
           <div id="gallerySizeControl" class="hidden items-center gap-1.5 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-lg border dark:border-slate-600 text-xs">
             <i class="fa-solid fa-magnifying-glass-minus text-slate-400 text-[10px]"></i>
             <input type="range" id="gallerySizeRange" min="1" max="5" step="1" value="3" oninput="changeGallerySize(this.value)" class="w-16 accent-indigo-600 cursor-pointer">
@@ -102,7 +102,7 @@
       </div>
     </header>
 
-    <!-- タブおよびカテゴリー部分 -->
+    <!-- タブおよびカテゴリー部分も sticky 内に収めることで、スクロールしても一緒に固定追従します -->
     <div class="max-w-[1600px] mx-auto px-4 py-2 space-y-2">
       <div class="border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
         <div id="tabList" class="flex items-center gap-1 overflow-x-auto no-scrollbar pt-1 flex-1 select-none"></div>
@@ -158,7 +158,7 @@
           <div class="space-y-2">
             <div id="dropZone" onclick="document.getElementById('fileInput').click()" class="border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-indigo-500 rounded-xl p-3 text-center cursor-pointer bg-slate-50 dark:bg-slate-700/50 transition">
               <i class="fa-solid fa-cloud-arrow-up text-xl text-slate-400 mb-1"></i>
-              <p class="text-xs text-slate-600 dark:text-slate-300">クリックまたはドラッグ＆ドロップで画像を選択</p>
+              <p class="text-xs text-slate-600 dark:text-slate-300">クリックまたはドラッグ＆ドロップで画像を選択（自動リサイズ・圧縮されます）</p>
               <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
             </div>
             <input type="url" id="itemImage" placeholder="画像URLを入力 (https://...)" class="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" oninput="updateImagePreview(this.value)">
@@ -247,7 +247,9 @@
           <i class="fa-solid fa-xmark text-base"></i>
         </button>
       </div>
-      <div id="categorySelectList" class="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1"></div>
+      <div id="categorySelectList" class="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
+        <!-- 動的にカテゴリー一覧が生成されます -->
+      </div>
       <div class="flex justify-end pt-2 border-t dark:border-slate-700">
         <button onclick="closeCategorySelectModal()" class="px-4 py-1.5 text-xs bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 font-medium transition">キャンセル</button>
       </div>
@@ -287,6 +289,52 @@
     let modalDragCatIndex = null;
     let modalDragTabIndex = null;
     let currentRenderToken = 0;
+
+    // --- 画像のリサイズ・圧縮共通関数 (長辺最大400px) ---
+    function compressImageFile(fileOrDataUrl, maxWidth = 400, quality = 0.8) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let w = img.width;
+          let h = img.height;
+          
+          if (w > h && w > maxWidth) {
+            h = Math.round((h * maxWidth) / w);
+            w = maxWidth;
+          } else if (h > maxWidth) {
+            w = Math.round((w * maxWidth) / h);
+            h = maxWidth;
+          }
+          
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          
+          let mimeType = 'image/webp';
+          let compressed = canvas.toDataURL(mimeType, quality);
+          if (!compressed.startsWith('data:image/webp')) {
+            mimeType = 'image/jpeg';
+            compressed = canvas.toDataURL(mimeType, quality);
+          }
+          resolve(compressed);
+        };
+        img.onerror = () => {
+          // 読み込みに失敗した場合は元のデータをそのまま返す
+          resolve(typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '');
+        };
+        
+        if (typeof fileOrDataUrl === 'string') {
+          img.src = fileOrDataUrl;
+        } else {
+          const reader = new FileReader();
+          reader.onload = (e) => { img.src = e.target.result; };
+          reader.readAsDataURL(fileOrDataUrl);
+        }
+      });
+    }
 
     // --- IndexedDB のセットアップと操作 ---
     const DB_NAME = 'ClipGalleryDB';
@@ -355,10 +403,16 @@
       setupDragScroll('categoryChips');
       setupDragScroll('tabList');
 
+      // 起動時、Base64形式や外部URL形式の画像があればIndexedDBへ移行・圧縮する（長辺最大400px）
       for (let item of items) {
-        if (item.imageUrl && item.imageUrl.startsWith('data:')) {
-          await saveImageToDB(item.id, item.imageUrl);
-          item.imageUrl = `indexeddb://${item.id}`;
+        if (item.imageUrl) {
+          if (item.imageUrl.startsWith('data:')) {
+            const compressed = await compressImageFile(item.imageUrl, 400, 0.8);
+            await saveImageToDB(item.id, compressed);
+            item.imageUrl = `indexeddb://${item.id}`;
+          } else if (!item.imageUrl.startsWith('indexeddb://') && item.imageUrl.startsWith('http')) {
+            // 外部URLのままであればそのまま保持
+          }
         }
       }
       saveAll();
@@ -443,7 +497,7 @@
       }
 
       const data = {
-        version: "1.8",
+        version: "1.9",
         exportedAt: new Date().toISOString(),
         tabs, categories, items: exportedItems,
         settings: { copyMode, darkMode: isDarkMode, galleryLevel }
@@ -471,12 +525,18 @@
         try {
           const data = JSON.parse(e.target.result);
           if (!data.items || !Array.isArray(data.items)) throw new Error("フォーマット不整合");
-          if (confirm(`データ（カード ${data.items.length}件）を復元しますか？`)) {
+          if (confirm(`データ（カード ${data.items.length}件）を復元しますか？\n（インポートされた画像は長辺最大400pxに自動リサイズ・圧縮されます）`)) {
             items = [];
             for (const item of data.items) {
-              if (item.imageUrl && item.imageUrl.startsWith('data:')) {
-                await saveImageToDB(item.id, item.imageUrl);
-                item.imageUrl = `indexeddb://${item.id}`;
+              if (item.imageUrl) {
+                if (item.imageUrl.startsWith('data:')) {
+                  // Base64画像の場合は長辺400pxにリサイズ・圧縮してIndexedDBへ格納
+                  const compressedUrl = await compressImageFile(item.imageUrl, 400, 0.8);
+                  await saveImageToDB(item.id, compressedUrl);
+                  item.imageUrl = `indexeddb://${item.id}`;
+                } else if (item.imageUrl.startsWith('http')) {
+                  // 外部URLの場合はそのまま保持
+                }
               }
               items.push(item);
             }
@@ -495,7 +555,7 @@
             onlyFavorite = false;
             updateFavoriteFilterUI();
             render();
-            showToast("データを正常に復元しました！");
+            showToast("データを正常に復元・圧縮しました！");
           }
         } catch (err) {
           alert("JSONファイルの読み込みエラー: " + err.message);
@@ -717,7 +777,6 @@
       renderCategoryChips();
     }
 
-    // --- 「全カテゴリー」クリック時の選択モーダル関連処理 ---
     function openCategorySelectModal() {
       const modal = document.getElementById('categorySelectModal');
       const listContainer = document.getElementById('categorySelectList');
@@ -793,6 +852,23 @@
       }
     }
 
+    async function resolveImageUrl(item) {
+      if (!item.imageUrl) return '';
+      if (item.imageUrl.startsWith('indexeddb://')) {
+        const id = item.imageUrl.replace('indexeddb://', '');
+        return await getImageFromDB(id) || '';
+      }
+      // 過去のJSONでBase64が直接入っている場合のフォールバック（長辺400pxに圧縮）
+      if (item.imageUrl.startsWith('data:')) {
+        const compressed = await compressImageFile(item.imageUrl, 400, 0.8);
+        await saveImageToDB(item.id, compressed);
+        item.imageUrl = `indexeddb://${item.id}`;
+        saveAll();
+        return await getImageFromDB(item.id) || '';
+      }
+      return item.imageUrl;
+    }
+
     async function renderContainer() {
       const renderToken = ++currentRenderToken;
       
@@ -831,14 +907,6 @@
         return;
       }
 
-      const resolveImageUrl = async (item) => {
-        if (item.imageUrl && item.imageUrl.startsWith('indexeddb://')) {
-          const id = item.imageUrl.replace('indexeddb://', '');
-          return await getImageFromDB(id) || '';
-        }
-        return item.imageUrl;
-      };
-
       if (currentView === 'list') {
         container.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5";
 
@@ -852,9 +920,8 @@
           cardEl.className = "bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col transition";
           cardEl.innerHTML = `
             <div class="relative group cursor-pointer" onclick="copyByMode(items.find(i => i.id === '${item.id}'))">
-              <!-- 【一覧表示】通常時は object-cover（一部切り抜き）、ホバー時(group-hover)に object-contain（全体フル表示）に切り替え -->
-              <div class="aspect-[9/16] max-h-52 w-full overflow-hidden bg-slate-900 flex items-center justify-center">
-                <img src="${resolvedUrl}" class="w-full h-full object-cover group-hover:object-contain transition-all duration-300">
+              <div class="aspect-[9/16] max-h-52 w-full overflow-hidden bg-slate-900">
+                <img src="${resolvedUrl}" class="w-full h-full object-cover">
               </div>
               <div class="absolute top-2 left-2 flex gap-1 flex-wrap max-w-[70%]">
                 <span class="bg-slate-900/80 text-white text-[10px] px-2 py-0.5 rounded-full backdrop-blur-sm font-medium">
@@ -909,19 +976,18 @@
           const favStarColor = item.isFavorite ? "text-amber-400" : "text-white/60 hover:text-amber-400";
           
           const gridEl = document.createElement('div');
-          // 【画像一覧表示】こちらは常に全体がフルで見える object-contain を維持
-          gridEl.className = "relative bg-slate-900 rounded-lg overflow-hidden shadow-sm aspect-[9/16] group flex items-center justify-center";
+          gridEl.className = "relative bg-slate-200 dark:bg-slate-800 rounded-lg overflow-hidden shadow-sm aspect-[9/16] group";
           gridEl.innerHTML = `
-            <div class="absolute inset-0 cursor-pointer flex items-center justify-center" onclick="copyByMode(items.find(i => i.id === '${item.id}'))">
-              <img src="${resolvedUrl}" class="w-full h-full object-contain">
+            <div class="absolute inset-0 cursor-pointer" onclick="copyByMode(items.find(i => i.id === '${item.id}'))">
+              <img src="${resolvedUrl}" class="w-full h-full object-cover">
             </div>
-            <div class="absolute top-1 left-1 right-1 flex justify-between items-center pointer-events-none z-10">
-              <span class="text-[9px] bg-slate-900/80 text-white px-1 py-0.5 rounded truncate max-w-[70%]">${escapeHtml(item.category || '未分類')}</span>
+            <div class="absolute top-1 left-1 right-1 flex justify-between items-center pointer-events-none">
+              <span class="text-[9px] bg-slate-900/80 text-white px-1 py-0.5 rounded truncate max-w-[70%]" title="${escapeHtml(item.category || '未分類')}">${escapeHtml(item.category || '未分類')}</span>
               <button onclick="toggleFavorite(event, '${item.id}')" class="p-1 pointer-events-auto ${favStarColor} transition" title="お気に入り">
                 <i class="fa-solid fa-star text-xs"></i>
               </button>
             </div>
-            <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex flex-col justify-end p-1 text-white pointer-events-none z-10">
+            <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition flex flex-col justify-end p-1 text-white pointer-events-none">
               <div class="text-center text-[10px] font-bold">
                 <i class="fa-regular fa-copy"></i> コピー
               </div>
@@ -967,11 +1033,7 @@
         document.getElementById('itemTextA').value = item.textA;
         document.getElementById('itemTextB').value = item.textB || '';
 
-        let imageUrl = item.imageUrl;
-        if (imageUrl && imageUrl.startsWith('indexeddb://')) {
-          const dbId = imageUrl.replace('indexeddb://', '');
-          imageUrl = await getImageFromDB(dbId) || '';
-        }
+        const imageUrl = await resolveImageUrl(item);
         document.getElementById('itemImage').value = imageUrl;
         updateImagePreview(imageUrl);
       } else {
@@ -1015,27 +1077,11 @@
       if (e.target.files.length) processImageFile(e.target.files[0]);
     }
 
-    function processImageFile(file) {
+    async function processImageFile(file) {
       if (!file.type.startsWith('image/')) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX_SIZE = 800;
-          let w = img.width, h = img.height;
-          if (w > h && w > MAX_SIZE) { h *= MAX_SIZE / w; w = MAX_SIZE; }
-          else if (h > MAX_SIZE) { w *= MAX_SIZE / h; h = MAX_SIZE; }
-          canvas.width = w; canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, w, h);
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
-          document.getElementById('itemImage').value = compressedDataUrl;
-          updateImagePreview(compressedDataUrl);
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+      const compressedDataUrl = await compressImageFile(file, 400, 0.8);
+      document.getElementById('itemImage').value = compressedDataUrl;
+      updateImagePreview(compressedDataUrl);
     }
 
     async function saveItem(e) {
@@ -1043,9 +1089,12 @@
       const id = document.getElementById('itemId').value || Date.now().toString();
       const existing = items.find(i => i.id === id);
 
-      const rawImageUrl = document.getElementById('itemImage').value;
+      let rawImageUrl = document.getElementById('itemImage').value;
       
-      if (rawImageUrl && rawImageUrl.startsWith('data:')) {
+      if (rawImageUrl) {
+        if (rawImageUrl.startsWith('data:')) {
+          rawImageUrl = await compressImageFile(rawImageUrl, 400, 0.8);
+        }
         await saveImageToDB(id, rawImageUrl);
       }
 
@@ -1054,7 +1103,7 @@
         title: document.getElementById('itemTitle').value,
         tab: document.getElementById('itemTab').value,
         category: document.getElementById('itemCategory').value,
-        imageUrl: rawImageUrl.startsWith('data:') ? `indexeddb://${id}` : rawImageUrl,
+        imageUrl: rawImageUrl ? `indexeddb://${id}` : '',
         textA: document.getElementById('itemTextA').value,
         textB: document.getElementById('itemTextB').value,
         isFavorite: existing ? existing.isFavorite : false
@@ -1213,7 +1262,7 @@
         return;
       }
 
-      if (confirm(`カテゴリー「${catName}」を削除しますか？\n（該当カードのカテゴリーはプラグイン「未分類」になります）`)) {
+      if (confirm(`カテゴリー「${catName}」を削除しますか？\n（該当カードのカテゴリーは「未分類」になります）`)) {
         categories.splice(index, 1);
         items.forEach(item => { if (item.category === catName) item.category = "未分類"; });
         if (!categories.includes("未分類")) categories.push("未分類");
